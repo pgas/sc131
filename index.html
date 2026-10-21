@@ -118,15 +118,11 @@
           <div class="terminal-viewport">
             <canvas id="term-canvas-0"></canvas>
             <canvas id="term-canvas-1" class="hidden"></canvas>
-            <!-- Dedicated Terminal Scrollbar (scrollback is controlled exclusively via this scrollbar) -->
-            <div id="term-scrollbar" class="term-scrollbar" title="Drag scrollbar to view terminal scrollback history">
-              <div id="term-scroll-spacer" class="term-scroll-spacer"></div>
-            </div>
           </div>
         </div>
 
         <div class="terminal-footer mono-xs">
-          <span>Click inside the terminal to type &bull; 115200 8N1 FTDI Serial Console &bull; Use the right-edge scrollbar for scrollback</span>
+          <span>Click inside the terminal to type &bull; Standard 80&times;25 115200 8N1 FTDI Serial Console</span>
           <span id="perf-counter">18.43 MHz &bull; 0 cycles</span>
         </div>
       </div>
@@ -139,7 +135,7 @@
             <span class="mono-xs text-muted">(Updates on Pause/Step/Refresh, or enable Live)</span>
           </div>
           <div class="debugger-actions">
-            <label class="checkbox-xs" title="Continuously update Disassembler &amp; Memory Hex while CPU is running">
+            <label class="checkbox-xs" title="Continuously update CPU &amp; MMU, Disassembler &amp; Memory Hex while CPU is running">
               <input type="checkbox" id="chk-debugger-live" /> Live Updates While Running
             </label>
             <button id="btn-debugger-refresh" class="btn btn-xs btn-accent" title="Snapshot current CPU, Disassembler, and Memory state now">Refresh Snapshot</button>

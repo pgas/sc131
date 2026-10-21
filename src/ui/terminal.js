@@ -77,7 +77,6 @@ export class SerialTerminal {
     this.rows = options.rows || 25;
     this.themeName = options.theme || 'amber';
     this.onInput = options.onInput || null;
-    this.onScrollChange = options.onScrollChange || null;
     this.wordstarArrows = false; // If true, map arrow keys to ^E/^X/^S/^D
     this.crtScanlines = true;
 
@@ -134,9 +133,6 @@ export class SerialTerminal {
     for (let r = 0; r < this.rows; r++) {
       this.grid[r] = this.makeEmptyRow();
     }
-    this.scrollback = [];
-    this.maxScrollback = 400;
-    this.scrollOffset = 0;
 
     this.cursorRow = 0;
     this.cursorCol = 0;
@@ -159,23 +155,6 @@ export class SerialTerminal {
     this.eqRow = 0;
 
     this.dirty = true;
-    this.notifyScroll();
-  }
-
-  notifyScroll() {
-    if (this.onScrollChange) {
-      this.onScrollChange(this.scrollOffset, this.scrollback.length, this.rows, this.charHeight);
-    }
-  }
-
-  setScrollOffset(offset) {
-    const clamped = Math.max(0, Math.min(this.scrollback.length, Math.round(offset)));
-    if (clamped !== this.scrollOffset) {
-      this.scrollOffset = clamped;
-      this.dirty = true;
-      this.render();
-      this.notifyScroll();
-    }
   }
 
   setTheme(name) {
@@ -197,7 +176,6 @@ export class SerialTerminal {
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.dirty = true;
     this.render();
-    this.notifyScroll();
   }
 
   setupEvents() {
@@ -336,19 +314,11 @@ export class SerialTerminal {
 
   scrollUp(lines = 1) {
     for (let i = 0; i < lines; i++) {
-      const removed = this.grid[this.scrollTop];
-      if (this.scrollTop === 0) {
-        this.scrollback.push(removed);
-        if (this.scrollback.length > this.maxScrollback) {
-          this.scrollback.shift();
-        }
-      }
       for (let r = this.scrollTop; r < this.scrollBottom; r++) {
         this.grid[r] = this.grid[r + 1];
       }
       this.grid[this.scrollBottom] = this.makeEmptyRow();
     }
-    this.notifyScroll();
   }
 
   scrollDown(lines = 1) {
@@ -709,14 +679,8 @@ export class SerialTerminal {
     ctx.font = `${this.fontSize || 16}px "JetBrains Mono", "Fira Code", "Cascadia Mono", "Courier New", monospace`;
     ctx.textBaseline = 'top';
 
-    const totalLines = this.scrollback.length + this.rows;
-    const startLine = Math.max(0, totalLines - this.rows - this.scrollOffset);
-
     for (let r = 0; r < this.rows; r++) {
-      const lineIdx = startLine + r;
-      const row = lineIdx < this.scrollback.length
-        ? this.scrollback[lineIdx]
-        : this.grid[lineIdx - this.scrollback.length];
+      const row = this.grid[r];
       if (!row) continue;
 
       const y = pad + r * this.charHeight;
@@ -754,8 +718,8 @@ export class SerialTerminal {
       }
     }
 
-    // Draw cursor if at bottom of scrollback
-    if (this.scrollOffset === 0 && this.cursorVisible) {
+    // Draw cursor
+    if (this.cursorVisible) {
       const cx = pad + Math.min(this.cols - 1, this.cursorCol) * this.charWidth;
       const cy = pad + this.cursorRow * this.charHeight;
       ctx.fillStyle = theme.cursor;

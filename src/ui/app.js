@@ -39,7 +39,6 @@ class SC131EmulatorApp {
     this.debuggerVisible = true;
     this.debuggerLive = false;
     this.disasmBaseAddr = null; // null = follow PC when refreshed
-    this.syncingTermScroll = false;
     this.syncingMemInput = false;
 
     // Initialize terminals
@@ -55,9 +54,6 @@ class SC131EmulatorApp {
         this.sc131.sendSerial(0, b);
         this.triggerSerialDot(0);
       },
-      onScrollChange: () => {
-        if (this.activeSerialTab === 0) this.syncTerminalScrollbar();
-      },
     });
 
     this.term1 = new SerialTerminal(canvas1, {
@@ -68,9 +64,6 @@ class SC131EmulatorApp {
       onInput: (b) => {
         this.sc131.sendSerial(1, b);
         this.triggerSerialDot(1);
-      },
-      onScrollChange: () => {
-        if (this.activeSerialTab === 1) this.syncTerminalScrollbar();
       },
     });
 
@@ -87,38 +80,11 @@ class SC131EmulatorApp {
 
     this.bindUI();
     this.setupMemoryVirtualScroll();
-    this.syncTerminalScrollbar();
     this.bootDefaultSystem();
   }
 
   getActiveTerminal() {
     return this.activeSerialTab === 0 ? this.term0 : this.term1;
-  }
-
-  /**
-   * Synchronize the dedicated right-edge scrollbar with the active terminal's scrollback buffer
-   */
-  syncTerminalScrollbar() {
-    const sb = document.getElementById('term-scrollbar');
-    const spacer = document.getElementById('term-scroll-spacer');
-    const term = this.getActiveTerminal();
-    if (!sb || !spacer || !term) return;
-
-    const canvasHeight = term.rows * term.charHeight + 16;
-    sb.style.height = `${canvasHeight}px`;
-
-    const totalLines = term.scrollback.length + term.rows;
-    const totalHeight = Math.max(canvasHeight, totalLines * term.charHeight + 16);
-    spacer.style.height = `${totalHeight}px`;
-
-    const maxScrollTop = Math.max(0, totalHeight - canvasHeight);
-    const targetScrollTop = term.scrollback.length > 0
-      ? Math.round(((term.scrollback.length - term.scrollOffset) / term.scrollback.length) * maxScrollTop)
-      : 0;
-
-    this.syncingTermScroll = true;
-    sb.scrollTop = targetScrollTop;
-    this.syncingTermScroll = false;
   }
 
   triggerSerialDot(ch) {
@@ -264,22 +230,6 @@ class SC131EmulatorApp {
   }
 
   bindUI() {
-    // Dedicated Terminal Scrollbar handler
-    const termSb = document.getElementById('term-scrollbar');
-    termSb?.addEventListener('scroll', () => {
-      if (this.syncingTermScroll) return;
-      const term = this.getActiveTerminal();
-      if (!term || term.scrollback.length === 0) return;
-      const maxScrollTop = Math.max(1, termSb.scrollHeight - termSb.clientHeight);
-      const ratioFromTop = Math.max(0, Math.min(1, termSb.scrollTop / maxScrollTop));
-      const newOffset = Math.round((1 - ratioFromTop) * term.scrollback.length);
-      if (newOffset !== term.scrollOffset) {
-        term.scrollOffset = newOffset;
-        term.dirty = true;
-        term.render();
-      }
-    });
-
     // Show/Hide Debugger section below terminal
     document.getElementById('btn-toggle-debugger')?.addEventListener('click', () => {
       this.setDebuggerVisible(!this.debuggerVisible);
@@ -451,7 +401,6 @@ class SC131EmulatorApp {
       this.term1.canvas.classList.add('hidden');
       this.term0.dirty = true;
       this.term0.render();
-      this.syncTerminalScrollbar();
       this.term0.canvas.focus();
     });
 
@@ -463,7 +412,6 @@ class SC131EmulatorApp {
       this.term0.canvas.classList.add('hidden');
       this.term1.dirty = true;
       this.term1.render();
-      this.syncTerminalScrollbar();
       this.term1.canvas.focus();
     });
 
@@ -472,7 +420,6 @@ class SC131EmulatorApp {
       const preset = e.target.value;
       this.term0.setSizePreset(preset);
       this.term1.setSizePreset(preset);
-      this.syncTerminalScrollbar();
       this.getActiveTerminal().canvas.focus();
     });
 
@@ -514,7 +461,6 @@ class SC131EmulatorApp {
       const term = this.getActiveTerminal();
       term.reset();
       term.render();
-      this.syncTerminalScrollbar();
       term.canvas.focus();
     });
 
@@ -761,9 +707,8 @@ class SC131EmulatorApp {
 
     if (!this.debuggerVisible) return;
 
-    this.updateCpuMmuUI(st);
-
     if (force || !this.running || this.debuggerLive) {
+      this.updateCpuMmuUI(st);
       this.updateDisasmUI(st);
       this.renderVisibleMemoryHex();
     }
