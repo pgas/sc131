@@ -515,6 +515,93 @@ select, input[type="text"] {
   opacity: 0.9;
 }
 
+/* SC126 Z180 RC2014 Motherboard Panel & 8-Bit Diagnostic LED Bar */
+.sc126-front-panel {
+  background: linear-gradient(145deg, #5d0d13 0%, #3d080c 100%);
+  border: 2px solid #8a1c24;
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: inset 0 1px 3px rgba(255, 255, 255, 0.14), 0 4px 12px rgba(0, 0, 0, 0.45);
+}
+
+.sc126-top-row {
+  border: 1.5px solid var(--sc131-gold);
+  border-radius: 6px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sc126-power-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sc126-led-bar-box,
+.sc126-rtc-box {
+  background: rgba(11, 16, 27, 0.78);
+  border: 1px solid rgba(212, 168, 79, 0.45);
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sc126-box-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--sc131-gold-bright);
+  font-weight: 700;
+}
+
+.sc126-led-bar {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+  padding: 6px 4px;
+  background: #090e17;
+  border: 1px solid #1e293b;
+  border-radius: 5px;
+}
+
+.diag-led-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 0;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s ease;
+}
+
+.diag-led-cell:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.diag-led-cell small {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #cbd5e1;
+  font-weight: 700;
+}
+
+.sc126-rtc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #e2e8f0;
+}
+
 /* Rear Panel Status */
 .sc131-rear-panel {
   display: grid;

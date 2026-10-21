@@ -1,10 +1,14 @@
 /**
- * Main Browser Application for SC131 Z180 Pocket Computer Emulator
- * - Left Column: Prominent Terminal (scrollbar-only scrollback) + Debugger below the terminal
- * - Right Column: Always-visible SC131 Hardware Panels (Enclosure, SDHC, Serial/Supervisor, PCB & Jumpers)
+ * Main Browser Application for SC131 & SC126 Z180 Emulators
+ * - Supports switching between:
+ *   1) SC131 Z180 Pocket Computer (Port 0x0C SPI /CS, Port 0x0E Orange Status LED1)
+ *   2) SC126 Z180 RC2014 Motherboard (Port 0x0D 8-LED Bar, Port 0x0C DS1302 RTC + I2C + SPI /CS1)
+ * - Left Column: Prominent Terminal (80x25 CRT) + Debugger below the terminal
+ * - Right Column: Always-visible Hardware Panels
  */
 
 import { SC131 } from '../emulator/sc131.js';
+import { SC126 } from '../emulator/sc126.js';
 import { disassembleRange } from '../emulator/disasm.js';
 import { SerialTerminal } from './terminal.js';
 
@@ -12,6 +16,7 @@ const hex2 = (v) => (v & 0xFF).toString(16).toUpperCase().padStart(2, '0');
 const hex4 = (v) => (v & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
 const hex5 = (v) => (v & 0xFFFFF).toString(16).toUpperCase().padStart(5, '0');
 const hex6 = (v) => (v >>> 0).toString(16).toUpperCase().padStart(6, '0');
+const bin8 = (v) => (v & 0xFF).toString(2).padStart(8, '0');
 
 const MEM_ROW_HEIGHT = 20;
 
@@ -35,6 +40,10 @@ class SC131EmulatorApp {
     this.txRxBlink = [0, 0];
     this.sdBlinkTimeout = null;
     this.romCache = {};
+    this.sdBundleCache = null;
+
+    const params = new URLSearchParams(window.location.search);
+    this.machineType = params.get('machine') === 'sc126' ? 'sc126' : 'sc131';
 
     this.debuggerVisible = true;
     this.debuggerLive = false;
@@ -57,7 +66,7 @@ class SC131EmulatorApp {
       size: 'lg',
       theme: 'amber',
       onInput: (b) => {
-        this.sc131.sendSerial(0, b);
+        this.board.sendSerial(0, b);
         this.triggerSerialDot(0);
       },
     });
@@ -68,29 +77,51 @@ class SC131EmulatorApp {
       size: 'lg',
       theme: 'amber',
       onInput: (b) => {
-        this.sc131.sendSerial(1, b);
+        this.board.sendSerial(1, b);
         this.triggerSerialDot(1);
       },
     });
 
-    // Initialize SC131 hardware
-    this.sc131 = new SC131({
-      onSerialTx: (ch, byte) => {
-        if (ch === 0) {
-          this.term0.writeByte(byte);
-          this.handleSerialWatchByte(byte);
-        } else {
-          this.term1.writeByte(byte);
-        }
-        this.triggerSerialDot(ch);
-      },
-      onLedChange: (leds) => this.updateLedsUI(leds),
-      onSdActivity: (op, lba) => this.handleSdActivity(op, lba),
-    });
+    // Initialize both SC131 and SC126 boards
+    this.boards = {
+      sc131: new SC131({
+        onSerialTx: (ch, byte) => this.handleBoardSerialTx('sc131', ch, byte),
+        onLedChange: (leds) => {
+          if (this.machineType === 'sc131') this.updateLedsUI(leds);
+        },
+        onSdActivity: (op, lba) => {
+          if (this.machineType === 'sc131') this.handleSdActivity(op, lba);
+        },
+      }),
+      sc126: new SC126({
+        onSerialTx: (ch, byte) => this.handleBoardSerialTx('sc126', ch, byte),
+        onLedChange: (leds) => {
+          if (this.machineType === 'sc126') this.updateLedsUI(leds);
+        },
+        onSdActivity: (op, lba) => {
+          if (this.machineType === 'sc126') this.handleSdActivity(op, lba);
+        },
+      }),
+    };
+
+    this.board = this.boards[this.machineType];
+    this.sc131 = this.board; // backwards-compatible alias
 
     this.bindUI();
+    this.syncMachineChrome();
     this.setupMemoryVirtualScroll();
     this.bootDefaultSystem();
+  }
+
+  handleBoardSerialTx(boardKey, ch, byte) {
+    if (boardKey !== this.machineType) return;
+    if (ch === 0) {
+      this.term0.writeByte(byte);
+      this.handleSerialWatchByte(byte);
+    } else {
+      this.term1.writeByte(byte);
+    }
+    this.triggerSerialDot(ch);
   }
 
   getActiveTerminal() {
@@ -106,9 +137,28 @@ class SC131EmulatorApp {
   }
 
   updateLedsUI(leds) {
-    document.getElementById('led-status')?.classList.toggle('on', leds.status);
-    document.getElementById('led-power')?.classList.toggle('on', leds.power);
-    document.getElementById('led-reset')?.classList.toggle('on', leds.reset);
+    if (this.machineType === 'sc131') {
+      document.getElementById('led-status')?.classList.toggle('on', leds.status);
+      document.getElementById('led-power')?.classList.toggle('on', leds.power);
+      document.getElementById('led-reset')?.classList.toggle('on', leds.reset);
+    } else {
+      document.getElementById('sc126-led-power')?.classList.toggle('on', leds.power);
+      document.getElementById('sc126-led-reset')?.classList.toggle('on', leds.reset);
+      const diag = leds.diagByte ?? 0;
+      for (let bit = 0; bit < 8; bit++) {
+        const el = document.getElementById(`diag-led-${bit}`);
+        el?.classList.toggle('on', ((diag >> bit) & 1) !== 0);
+      }
+      const hexEl = document.getElementById('sc126-diag-hex');
+      if (hexEl) {
+        hexEl.textContent = `$${hex2(diag)} (${bin8(diag)})`;
+      }
+      document.getElementById('sc126-rtc-ce')?.classList.toggle('on', Boolean(leds.rtcCe));
+      const i2cEl = document.getElementById('sc126-i2c-status');
+      if (i2cEl) {
+        i2cEl.textContent = `SCL=${leds.i2cScl ? 1 : 0} SDA=${leds.i2cSda ? 1 : 0} • /CS2=${leds.spiCs2 ? 0 : 1}`;
+      }
+    }
     document.getElementById('led-sd-act')?.classList.toggle('on', leds.sdSelect);
   }
 
@@ -118,16 +168,91 @@ class SC131EmulatorApp {
     const rwEl = document.getElementById('sd-rw-count');
     if (opEl) opEl.textContent = op;
     if (lbaEl) lbaEl.textContent = '0x' + hex6(lba);
-    if (rwEl) rwEl.textContent = `${this.sc131.sdcard.readCount} / ${this.sc131.sdcard.writeCount}`;
+    if (rwEl) rwEl.textContent = `${this.board.sdcard.readCount} / ${this.board.sdcard.writeCount}`;
 
     const sdLed = document.getElementById('led-sd-act');
     if (sdLed) {
       sdLed.classList.add('on');
       clearTimeout(this.sdBlinkTimeout);
       this.sdBlinkTimeout = setTimeout(() => {
-        sdLed.classList.toggle('on', this.sc131.getLeds().sdSelect);
+        sdLed.classList.toggle('on', this.board.getLeds().sdSelect);
       }, 65);
     }
+  }
+
+  syncMachineChrome() {
+    const is126 = this.machineType === 'sc126';
+    const machineSel = document.getElementById('machine-select');
+    if (machineSel && machineSel.value !== this.machineType) {
+      machineSel.value = this.machineType;
+    }
+
+    const badge = document.getElementById('brand-badge');
+    const title = document.getElementById('brand-title');
+    const sub = document.getElementById('brand-subtitle-text');
+    const link = document.getElementById('brand-doc-link');
+    const fwOpt = document.getElementById('fw-opt-romwbw');
+    const btnReset = document.getElementById('btn-reset');
+    const btnLedDemo = document.getElementById('btn-led-demo');
+
+    if (badge) badge.textContent = is126 ? 'SC126' : 'SC131';
+    if (title) {
+      title.textContent = is126
+        ? 'SC126 Z180 RC2014 Motherboard Emulator'
+        : 'SC131 Z180 Pocket Computer Emulator';
+    }
+    if (sub) {
+      sub.textContent = is126
+        ? 'Z8S180 @ 18.432 MHz • 512 KB Flash • 512 KB SRAM • Port $0D 8-LED Bar • DS1302 RTC • SPI SDHC'
+        : 'Zilog Z8S180 @ 18.432 MHz • 512 KB Flash • 512 KB SRAM • SPI SDHC';
+    }
+    if (link) {
+      link.href = is126
+        ? 'https://smallcomputercentral.com/rcbus/sc100-series/sc126-z180-motherboard-rc2014/'
+        : 'https://smallcomputercentral.com/sc131-z180-pocket-computer/';
+    }
+    if (fwOpt) {
+      fwOpt.textContent = is126
+        ? 'RomWBW v3.6.0 (SCZ180_sc126_std)'
+        : 'RomWBW v3.6.0 (SCZ180_sc131_std)';
+    }
+    if (btnReset) {
+      btnReset.textContent = is126 ? 'Reset (SW2)' : 'Reset (SW1)';
+    }
+    if (btnLedDemo) {
+      btnLedDemo.textContent = is126 ? '8-LED Bar Demo' : 'LED1 Blink Demo';
+      btnLedDemo.title = is126
+        ? 'Reset to BASIC and run an 8-LED Knight Rider scanner on Port 13 (0x0D)'
+        : 'Reset to BASIC and blink the Orange Status LED1 on Port 14 (0x0E)';
+    }
+
+    // Toggle right-column hardware cards
+    document.getElementById('hw-front-sc131')?.classList.toggle('hidden', is126);
+    document.getElementById('hw-front-sc126')?.classList.toggle('hidden', !is126);
+    document.getElementById('pcb-grid-sc131')?.classList.toggle('hidden', is126);
+    document.getElementById('pcb-grid-sc126')?.classList.toggle('hidden', !is126);
+
+    const sdPortTitle = document.getElementById('sd-port-title');
+    if (sdPortTitle) {
+      sdPortTitle.textContent = is126
+        ? 'P7 • SPI MicroSDHC Slot (Port 0x0C /CS1)'
+        : 'P1 • SPI MicroSDHC Slot (Port 0x0C / CSIO)';
+    }
+
+    const pcbTitle = document.getElementById('pcb-card-title');
+    const silkL = document.getElementById('pcb-silk-left');
+    const silkR = document.getElementById('pcb-silk-right');
+    if (pcbTitle) {
+      pcbTitle.textContent = is126 ? 'SC126 v1.0 RC2014 Motherboard' : 'SC131 v1.0 Motherboard PCB';
+    }
+    if (silkL) {
+      silkL.textContent = is126 ? 'SC126 v1.0 • RCBus-80' : 'SC131 v1.0 • S. C. Cousins';
+    }
+    if (silkR) {
+      silkR.textContent = is126 ? '101.6 × 99.1 mm' : '101.6 × 66.1 mm';
+    }
+
+    this.updateLedsUI(this.board.getLeds());
   }
 
   setDebuggerVisible(visible) {
@@ -148,43 +273,64 @@ class SC131EmulatorApp {
     return new Uint8Array(ab);
   }
 
+  getRomAssetPath(machine = this.machineType, fwKey = 'romwbw') {
+    if (fwKey === 'scm_s6') return './assets/scm_s6.rom';
+    return machine === 'sc126' ? './assets/romwbw_sc126.rom' : './assets/romwbw_sc131.rom';
+  }
+
+  async ensureRomLoaded(machine = this.machineType, fwKey = 'romwbw') {
+    const cacheKey = fwKey === 'scm_s6' ? 'scm_s6' : `romwbw_${machine}`;
+    if (!this.romCache[cacheKey]) {
+      this.romCache[cacheKey] = await this.fetchAssetBytes(this.getRomAssetPath(machine, fwKey));
+    }
+    this.boards[machine].loadRom(this.romCache[cacheKey]);
+  }
+
   async bootDefaultSystem() {
     try {
       const [romBytes, sdRaw] = await Promise.all([
-        this.fetchAssetBytes('./assets/romwbw_sc131.rom'),
+        this.fetchAssetBytes(this.getRomAssetPath(this.machineType, 'romwbw')),
         this.fetchAssetBytes('./assets/sc131_sdcard.simg'),
       ]);
-      this.romCache.romwbw = romBytes;
-      const sdBundle = await decompressIfGzip(sdRaw);
-      this.sc131.loadRom(romBytes);
-      this.sc131.sdcard.loadSparseBundle(sdBundle);
+      this.romCache[`romwbw_${this.machineType}`] = romBytes;
+      this.sdBundleCache = await decompressIfGzip(sdRaw);
+
+      this.boards.sc131.sdcard.loadSparseBundle(this.sdBundleCache);
+      this.boards.sc126.sdcard.loadSparseBundle(this.sdBundleCache);
+
+      this.board.loadRom(romBytes);
       this.triggerHardwareResetPulse(220);
       this.running = true;
       this.startLoop();
       this.term0.canvas.focus();
     } catch (err) {
-      console.error('Error loading default SC131 assets:', err);
-      const msg = `\r\n[Error loading SC131 ROM/SD assets: ${err.message}]\r\n`;
+      console.error('Error loading default assets:', err);
+      const msg = `\r\n[Error loading ROM/SD assets: ${err.message}]\r\n`;
       for (let i = 0; i < msg.length; i++) this.term0.writeByte(msg.charCodeAt(i));
       this.term0.render();
     }
   }
 
+  async switchMachine(newMachine) {
+    if (newMachine !== 'sc131' && newMachine !== 'sc126') return;
+    this.clearMacroQueue();
+    this.machineType = newMachine;
+    this.board = this.boards[this.machineType];
+    this.sc131 = this.board;
+    this.syncMachineChrome();
+
+    const fwKey = document.getElementById('firmware-select')?.value || 'romwbw';
+    await this.ensureRomLoaded(this.machineType, fwKey);
+    this.triggerHardwareResetPulse(220);
+    this.running = true;
+    this.updateRunPauseButton();
+    this.updateInspectorUI(true);
+    this.term0.canvas.focus();
+  }
+
   async switchFirmware(fwKey) {
     try {
-      if (fwKey === 'romwbw') {
-        if (!this.romCache.romwbw) {
-          this.romCache.romwbw = await this.fetchAssetBytes('./assets/romwbw_sc131.rom');
-        }
-        this.sc131.loadRom(this.romCache.romwbw);
-      } else if (fwKey === 'scm_s6') {
-        if (!this.romCache.scm_s6) {
-          this.romCache.scm_s6 = await this.fetchAssetBytes('./assets/scm_s6.rom');
-        }
-        this.sc131.loadRom(this.romCache.scm_s6);
-      }
-      this.term0.reset();
-      this.term1.reset();
+      await this.ensureRomLoaded(this.machineType, fwKey);
       this.triggerHardwareResetPulse(250);
       this.running = true;
       this.updateRunPauseButton();
@@ -226,14 +372,14 @@ class SC131EmulatorApp {
     this.term1.reset();
     this.term0.render();
     this.term1.render();
-    this.sc131.reset();
-    this.sc131.resetPulseRemainingMs = durationMs;
-    this.sc131.notifyLeds();
+    this.board.reset();
+    this.board.resetPulseRemainingMs = durationMs;
+    this.board.notifyLeds();
     this.updateStatusPill();
 
     setTimeout(() => {
-      this.sc131.resetPulseRemainingMs = 0;
-      this.sc131.notifyLeds();
+      this.board.resetPulseRemainingMs = 0;
+      this.board.notifyLeds();
       this.updateStatusPill();
       this.updateInspectorUI(true);
     }, durationMs);
@@ -250,7 +396,7 @@ class SC131EmulatorApp {
         this.macroTimer = null;
         return;
       }
-      this.sc131.sendSerial(this.activeSerialTab, str.charCodeAt(idx) & 0xFF);
+      this.board.sendSerial(this.activeSerialTab, str.charCodeAt(idx) & 0xFF);
       this.triggerSerialDot(this.activeSerialTab);
       idx++;
       if (idx < str.length) {
@@ -265,23 +411,22 @@ class SC131EmulatorApp {
   }
 
   /**
-   * Reset the terminal and SC131 back to RomWBW Boot Loader and execute prompt-sequenced steps
+   * Reset the terminal and active board back to RomWBW Boot Loader and execute prompt-sequenced steps
    */
-  runQuickLaunch(steps) {
+  async runQuickLaunch(steps) {
     this.clearMacroQueue();
-    if (this.romCache.romwbw) {
-      this.sc131.loadRom(this.romCache.romwbw);
-      const fwSel = document.getElementById('firmware-select');
-      if (fwSel) fwSel.value = 'romwbw';
-    }
+    await this.ensureRomLoaded(this.machineType, 'romwbw');
+    const fwSel = document.getElementById('firmware-select');
+    if (fwSel) fwSel.value = 'romwbw';
+
     this.activeSerialTab = 0;
     this.term0.reset();
     this.term1.reset();
     this.term0.render();
     this.term1.render();
-    this.sc131.reset();
-    this.sc131.resetPulseRemainingMs = 0;
-    this.sc131.notifyLeds();
+    this.board.reset();
+    this.board.resetPulseRemainingMs = 0;
+    this.board.notifyLeds();
     this.running = true;
     this.updateRunPauseButton();
     this.updateStatusPill();
@@ -290,7 +435,28 @@ class SC131EmulatorApp {
   }
 
   runLedBlinkDemo() {
-    const prog = [
+    if (this.machineType === 'sc126') {
+      const prog126 = [
+        '10 PRINT "SC126 8-LED BAR (PORT 13 / $0D) KNIGHT RIDER DEMO"',
+        '20 FOR R=1 TO 4',
+        '30 FOR B=0 TO 7 : V=2^B : OUT 13, V',
+        '40 FOR D=1 TO 250 : NEXT D : NEXT B',
+        '50 FOR B=6 TO 1 STEP -1 : V=2^B : OUT 13, V',
+        '60 FOR D=1 TO 250 : NEXT D : NEXT B',
+        '70 NEXT R',
+        '80 OUT 13, 170 : PRINT "DONE! PORT 13 SET TO $AA (10101010)."',
+        'RUN',
+        '',
+      ].join('\r');
+
+      this.runQuickLaunch([
+        { waitFor: 'Boot [H=Help]:', send: 'B\r\r', delayMs: 15 },
+        { waitFor: 'Ok', send: prog126, delayMs: 8 },
+      ]);
+      return;
+    }
+
+    const prog131 = [
       '10 PRINT "SC131 STATUS LED1 (PORT 14) BLINK DEMO"',
       '20 FOR I=1 TO 6',
       '30 PRINT "LED1 ON  (OUT 14, 0)" : OUT 14, 0',
@@ -305,11 +471,24 @@ class SC131EmulatorApp {
 
     this.runQuickLaunch([
       { waitFor: 'Boot [H=Help]:', send: 'B\r\r', delayMs: 15 },
-      { waitFor: 'Ok', send: prog, delayMs: 8 },
+      { waitFor: 'Ok', send: prog131, delayMs: 8 },
     ]);
   }
 
   bindUI() {
+    // Machine selector (SC131 vs SC126)
+    document.getElementById('machine-select')?.addEventListener('change', (e) => {
+      this.switchMachine(e.target.value);
+    });
+
+    // Interactive SC126 8-LED bar click to toggle bit in Port 0x0D
+    document.querySelectorAll('#sc126-led-bar .diag-led-cell').forEach((cell) => {
+      cell.addEventListener('click', () => {
+        const bit = parseInt(cell.getAttribute('data-bit') || '0', 10);
+        this.boards.sc126.writeExtIO(0x0D, this.boards.sc126.diagLeds ^ (1 << bit));
+      });
+    });
+
     // Show/Hide Debugger section below terminal
     document.getElementById('btn-toggle-debugger')?.addEventListener('click', () => {
       this.setDebuggerVisible(!this.debuggerVisible);
@@ -352,28 +531,29 @@ class SC131EmulatorApp {
       this.disasmBaseAddr = null;
       this.updateRunPauseButton();
       if (!this.debuggerVisible) this.setDebuggerVisible(true);
-      this.sc131.cpu.step();
+      this.board.cpu.step();
       this.term0.render();
       this.term1.render();
       this.updateStatusPill();
       this.updateInspectorUI(true);
     });
 
-    // Reset buttons (topbar + SW1 tactile button on front panel)
+    // Reset buttons (topbar + SW1 on SC131 + SW2 on SC126)
     const doReset = () => {
       this.triggerHardwareResetPulse(320);
       this.term0.canvas.focus();
     };
     document.getElementById('btn-reset')?.addEventListener('click', doReset);
     document.getElementById('hw-reset-btn')?.addEventListener('click', doReset);
+    document.getElementById('sc126-reset-btn')?.addEventListener('click', doReset);
 
     // JP1 Flash Write Protect Jumper
     const btnJp1 = document.getElementById('btn-jp1');
     btnJp1?.addEventListener('click', () => {
-      this.sc131.jp1WriteEnable = !this.sc131.jp1WriteEnable;
-      btnJp1.classList.toggle('rd', !this.sc131.jp1WriteEnable);
-      btnJp1.classList.toggle('wr', this.sc131.jp1WriteEnable);
-      btnJp1.textContent = this.sc131.jp1WriteEnable
+      this.board.jp1WriteEnable = !this.board.jp1WriteEnable;
+      btnJp1.classList.toggle('rd', !this.board.jp1WriteEnable);
+      btnJp1.classList.toggle('wr', this.board.jp1WriteEnable);
+      btnJp1.textContent = this.board.jp1WriteEnable
         ? 'JP1: Wr (Flash Write Enabled)'
         : 'JP1: Rd (Write Protected)';
     });
@@ -381,9 +561,9 @@ class SC131EmulatorApp {
     // JP2 Serial Port B Power Jumper
     const btnJp2 = document.getElementById('btn-jp2');
     btnJp2?.addEventListener('click', () => {
-      this.sc131.jp2PowerPortB = !this.sc131.jp2PowerPortB;
-      btnJp2.classList.toggle('rd', this.sc131.jp2PowerPortB);
-      btnJp2.textContent = this.sc131.jp2PowerPortB
+      this.board.jp2PowerPortB = !this.board.jp2PowerPortB;
+      btnJp2.classList.toggle('rd', this.board.jp2PowerPortB);
+      btnJp2.textContent = this.board.jp2PowerPortB
         ? 'JP2: Fitted (Port B 5V Connected)'
         : 'JP2: Open (Via Port A)';
     });
@@ -393,33 +573,35 @@ class SC131EmulatorApp {
     const vccVal = document.getElementById('vcc-val');
     vccSlider?.addEventListener('input', (e) => {
       const v = parseFloat(e.target.value);
-      const wasReset = this.sc131.isHeldInReset();
-      this.sc131.supplyVoltage = v;
+      const wasReset = this.board.isHeldInReset();
+      this.board.supplyVoltage = v;
       if (vccVal) vccVal.textContent = v.toFixed(2) + 'V';
-      const nowReset = this.sc131.isHeldInReset();
+      const nowReset = this.board.isHeldInReset();
       if (wasReset && !nowReset) {
         this.triggerHardwareResetPulse(250);
       } else {
-        this.sc131.notifyLeds();
+        this.board.notifyLeds();
         this.updateStatusPill();
       }
     });
 
-    // Custom ROM file upload
-    document.getElementById('rom-file-input')?.addEventListener('change', async (e) => {
+    // Custom ROM file upload (both SC131 & SC126 inputs)
+    const handleRomUpload = async (e) => {
       const file = e.target.files?.[0];
       if (!file) return;
       const ab = await file.arrayBuffer();
       const bytes = new Uint8Array(ab);
       if (file.name.toLowerCase().endsWith('.hex')) {
         const text = new TextDecoder().decode(bytes);
-        this.sc131.loadIntelHexRom(text);
+        this.board.loadIntelHexRom(text);
       } else {
-        this.sc131.loadRom(bytes);
+        this.board.loadRom(bytes);
       }
       this.term0.reset();
       this.triggerHardwareResetPulse(250);
-    });
+    };
+    document.getElementById('rom-file-input')?.addEventListener('change', handleRomUpload);
+    document.getElementById('rom-file-input-sc126')?.addEventListener('change', handleRomUpload);
 
     // Custom SD card image mount
     document.getElementById('sd-file-input')?.addEventListener('change', async (e) => {
@@ -427,20 +609,20 @@ class SC131EmulatorApp {
       if (!file) return;
       const ab = await file.arrayBuffer();
       const raw = await decompressIfGzip(new Uint8Array(ab));
-      this.sc131.sdcard.loadSparseBundle(raw);
-      this.sc131.sdcard.present = true;
+      this.board.sdcard.loadSparseBundle(raw);
+      this.board.sdcard.present = true;
       const st = document.getElementById('sd-status-text');
-      if (st) st.textContent = `SD0: ${file.name} (${this.sc131.sdcard.sizeMB} MB)`;
+      if (st) st.textContent = `SD0: ${file.name} (${this.board.sdcard.sizeMB} MB)`;
     });
 
     // Export SD card image
     document.getElementById('btn-sd-export')?.addEventListener('click', () => {
-      const data = this.sc131.sdcard.exportImage(18);
+      const data = this.board.sdcard.exportImage(18);
       const blob = new Blob([data], { type: 'application/octet-stream' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'sc131_sdcard_export.img';
+      a.download = `${this.machineType}_sdcard_export.img`;
       a.click();
       URL.revokeObjectURL(url);
     });
@@ -448,23 +630,22 @@ class SC131EmulatorApp {
     // Eject / Insert SD card
     const btnEject = document.getElementById('btn-sd-eject');
     btnEject?.addEventListener('click', () => {
-      this.sc131.sdcard.present = !this.sc131.sdcard.present;
-      btnEject.textContent = this.sc131.sdcard.present ? 'Eject SD' : 'Insert SD';
+      this.board.sdcard.present = !this.board.sdcard.present;
+      btnEject.textContent = this.board.sdcard.present ? 'Eject SD' : 'Insert SD';
       const st = document.getElementById('sd-status-text');
       if (st) {
-        st.textContent = this.sc131.sdcard.present
-          ? `SD0: ${this.sc131.sdcard.sizeMB} MB SDHC (Present)`
+        st.textContent = this.board.sdcard.present
+          ? `SD0: ${this.board.sdcard.sizeMB} MB SDHC (Present)`
           : 'SD0: [Card Ejected]';
       }
     });
 
-    // Quick-launch macros (always reset terminal & SC131 and boot cleanly to target)
+    // Quick-launch macros (always reset terminal & active board and boot cleanly to target)
     document.querySelectorAll('[data-macro]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const macro = btn.getAttribute('data-macro');
         if (!macro) return;
         if (macro.startsWith('2.4')) {
-          // WordStar slice: enable WordStar arrow keys and launch WS automatically at A>
           const wsChk = document.getElementById('chk-wordstar');
           if (wsChk) wsChk.checked = true;
           this.term0.wordstarArrows = true;
@@ -543,7 +724,7 @@ class SC131EmulatorApp {
         const text = await navigator.clipboard.readText();
         if (text) this.sendMacroString(text.replace(/\r?\n/g, '\r'), 6);
       } catch {
-        const text = window.prompt('Paste text to send to SC131 serial port:');
+        const text = window.prompt('Paste text to send to serial port:');
         if (text) this.sendMacroString(text.replace(/\r?\n/g, '\r'), 6);
       }
     });
@@ -584,15 +765,15 @@ class SC131EmulatorApp {
       const addr = parseInt(input.value.trim(), 16);
       if (!Number.isNaN(addr)) {
         const a16 = addr & 0xFFFF;
-        if (this.sc131.breakpoints.has(a16)) this.sc131.breakpoints.delete(a16);
-        else this.sc131.breakpoints.add(a16);
+        if (this.board.breakpoints.has(a16)) this.board.breakpoints.delete(a16);
+        else this.board.breakpoints.add(a16);
         input.value = '';
         this.updateDisasmUI();
       }
     });
 
     document.getElementById('btn-clear-bp')?.addEventListener('click', () => {
-      this.sc131.breakpoints.clear();
+      this.board.breakpoints.clear();
       this.updateDisasmUI();
     });
   }
@@ -616,7 +797,7 @@ class SC131EmulatorApp {
       if (label) {
         if (space === 'logical') label.textContent = '$0000 – $FFFF (64 KB Logical CPU)';
         else if (space === 'rom') label.textContent = '$00000 – $7FFFF (512 KB Flash ROM U1)';
-        else label.textContent = '$00000 – $7FFFF (512 KB Static RAM U2)';
+        else label.textContent = '$00000 – $7FFFF (512 KB Static RAM)';
       }
       this.renderVisibleMemoryHex();
     };
@@ -668,7 +849,7 @@ class SC131EmulatorApp {
     document.querySelectorAll('[data-mem-reg]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const reg = btn.getAttribute('data-mem-reg');
-        const st = this.sc131.cpu.getState();
+        const st = this.board.cpu.getState();
         if (spaceSelect) spaceSelect.value = 'logical';
         updateMemRangeDimensions();
         if (reg === 'pc') scrollToAddress(st.pc);
@@ -702,9 +883,9 @@ class SC131EmulatorApp {
       for (let c = 0; c < 16; c++) {
         const a = rowAddr + c;
         let b = 0;
-        if (space === 'logical') b = this.sc131.cpu.memRead(a & 0xFFFF);
-        else if (space === 'rom') b = this.sc131.rom[a & 0x7FFFF];
-        else b = this.sc131.ram[a & 0x7FFFF];
+        if (space === 'logical') b = this.board.cpu.memRead(a & 0xFFFF);
+        else if (space === 'rom') b = this.board.rom[a & 0x7FFFF];
+        else b = this.board.ram[a & 0x7FFFF];
         hexCols.push(hex2(b));
         const ch = (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.';
         ascii += ch === '<' ? '&lt;' : ch === '>' ? '&gt;' : ch === '&' ? '&amp;' : ch;
@@ -728,18 +909,18 @@ class SC131EmulatorApp {
     const pill = document.getElementById('status-pill');
     if (!pill) return;
     pill.classList.remove('pill-running', 'pill-paused', 'pill-reset');
-    if (this.sc131.isHeldInReset()) {
+    if (this.board.isHeldInReset()) {
       pill.classList.add('pill-reset');
-      pill.textContent = this.sc131.supplyVoltage < 4.7
-        ? `DS1233 BROWNOUT RESET (${this.sc131.supplyVoltage.toFixed(2)}V < 4.7V)`
-        : 'HARDWARE RESET (SW1)';
+      pill.textContent = this.board.supplyVoltage < 4.7
+        ? `DS1233 BROWNOUT RESET (${this.board.supplyVoltage.toFixed(2)}V < 4.7V)`
+        : `HARDWARE RESET (${this.machineType === 'sc126' ? 'SW2' : 'SW1'})`;
     } else if (this.running) {
       pill.classList.add('pill-running');
-      const mhz = ((this.sc131.cpu.getPhiHz() * this.speedMultiplier) / 1e6).toFixed(3);
+      const mhz = ((this.board.cpu.getPhiHz() * this.speedMultiplier) / 1e6).toFixed(3);
       pill.textContent = `RUNNING @ ${mhz} MHz`;
     } else {
       pill.classList.add('pill-paused');
-      pill.textContent = `PAUSED @ PC=$${hex4(this.sc131.cpu.pc)}`;
+      pill.textContent = `PAUSED @ PC=$${hex4(this.board.cpu.pc)}`;
     }
   }
 
@@ -751,11 +932,11 @@ class SC131EmulatorApp {
       const dtMs = Math.min(50, Math.max(1, now - lastTime));
       lastTime = now;
 
-      if (this.running && !this.sc131.isHeldInReset()) {
-        const phiHz = this.sc131.cpu.getPhiHz();
+      if (this.running && !this.board.isHeldInReset()) {
+        const phiHz = this.board.cpu.getPhiHz();
         const effectiveMult = this.macroQueue.length > 0 ? Math.max(this.speedMultiplier, 4.0) : this.speedMultiplier;
         const targetCycles = Math.round((phiHz * effectiveMult * dtMs) / 1000);
-        const { breakpointHit } = this.sc131.runCycles(targetCycles);
+        const { breakpointHit } = this.board.runCycles(targetCycles);
         if (breakpointHit) {
           this.running = false;
           this.disasmBaseAddr = null;
@@ -782,7 +963,7 @@ class SC131EmulatorApp {
   }
 
   updateInspectorUI(force = false) {
-    const st = this.sc131.cpu.getState();
+    const st = this.board.cpu.getState();
     const mhz = (st.phiHz / 1e6).toFixed(3);
 
     const perfEl = document.getElementById('perf-counter');
@@ -791,15 +972,24 @@ class SC131EmulatorApp {
     }
 
     // Update always-visible right-column hardware status
-    const s0 = this.sc131.getSerialConfig(0);
-    const s1 = this.sc131.getSerialConfig(1);
+    const s0 = this.board.getSerialConfig(0);
+    const s1 = this.board.getSerialConfig(1);
     const phiEl = document.getElementById('pcb-phi-label');
+    const phiEl126 = document.getElementById('pcb-phi-label-sc126');
     const a0El = document.getElementById('asci0-cfg');
     const a1El = document.getElementById('asci1-cfg');
     if (phiEl) phiEl.textContent = `PHI = ${mhz} MHz`;
+    if (phiEl126) phiEl126.textContent = `PHI = ${mhz} MHz`;
     if (a0El) a0El.textContent = `${s0.baud} ${s0.framing}`;
     if (a1El) a1El.textContent = `${s1.baud} ${s1.framing}`;
     document.getElementById('asci0-rts')?.classList.toggle('on', s0.rts);
+
+    if (this.machineType === 'sc126' && this.board.rtc) {
+      const rtcTimeEl = document.getElementById('sc126-rtc-time');
+      if (rtcTimeEl) {
+        rtcTimeEl.textContent = this.board.rtc.getFormattedTime();
+      }
+    }
 
     if (!this.debuggerVisible) return;
 
@@ -810,7 +1000,7 @@ class SC131EmulatorApp {
     }
   }
 
-  updateCpuMmuUI(st = this.sc131.cpu.getState()) {
+  updateCpuMmuUI(st = this.board.cpu.getState()) {
     const setTxt = (id, txt) => {
       const el = document.getElementById(id);
       if (el && el.textContent !== txt) el.textContent = txt;
@@ -844,7 +1034,7 @@ class SC131EmulatorApp {
     setTxt('reg-flags', flagStr);
     setTxt('cpu-mode-badge', `IM ${st.im} • ${st.iff1 ? 'EI' : 'DI'}${st.halted ? ' • HALT' : ''}`);
 
-    const mmu = this.sc131.getMmuSummary();
+    const mmu = this.board.getMmuSummary();
     setTxt('mmu-regs-raw', `CBAR=${hex2(mmu.cbar)} BBR=${hex2(mmu.bbr)} CBR=${hex2(mmu.cbr)}`);
     const mmuContainer = document.getElementById('mmu-bars');
     if (mmuContainer) {
@@ -864,15 +1054,15 @@ class SC131EmulatorApp {
     }
   }
 
-  updateDisasmUI(st = this.sc131.cpu.getState()) {
+  updateDisasmUI(st = this.board.cpu.getState()) {
     const disasmEl = document.getElementById('disasm-view');
     if (!disasmEl) return;
 
     const startAddr = this.disasmBaseAddr !== null ? this.disasmBaseAddr : st.pc;
-    const lines = disassembleRange((a) => this.sc131.cpu.memRead(a), startAddr, 64);
+    const lines = disassembleRange((a) => this.board.cpu.memRead(a), startAddr, 64);
     disasmEl.innerHTML = lines.map((inst) => {
       const isPc = inst.addr === st.pc;
-      const hasBp = this.sc131.breakpoints.has(inst.addr);
+      const hasBp = this.board.breakpoints.has(inst.addr);
       const bytesHex = inst.bytes.map((b) => hex2(b)).join(' ');
       return `<div class="disasm-row ${isPc ? 'current-pc' : ''} ${hasBp ? 'has-bp' : ''}" data-addr="${inst.addr}">
         <span>${hasBp ? '●' : ' '}$${hex4(inst.addr)}</span>
@@ -884,8 +1074,8 @@ class SC131EmulatorApp {
     disasmEl.querySelectorAll('.disasm-row').forEach((row) => {
       row.addEventListener('click', () => {
         const a = parseInt(row.getAttribute('data-addr'), 10);
-        if (this.sc131.breakpoints.has(a)) this.sc131.breakpoints.delete(a);
-        else this.sc131.breakpoints.add(a);
+        if (this.board.breakpoints.has(a)) this.board.breakpoints.delete(a);
+        else this.board.breakpoints.add(a);
         this.updateDisasmUI();
       });
     });

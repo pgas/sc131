@@ -6,6 +6,7 @@ import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 
 import { SC131 } from '../src/emulator/sc131.js';
+import { SC126 } from '../src/emulator/sc126.js';
 import { Z180_REG } from '../src/emulator/z180.js';
 import { disassembleOne } from '../src/emulator/disasm.js';
 import { SerialTerminal } from '../src/ui/terminal.js';
@@ -14,6 +15,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const assetsDir = path.resolve(__dirname, '../assets');
 
 const romwbwBytes = new Uint8Array(fs.readFileSync(path.join(assetsDir, 'romwbw_sc131.rom')));
+const romwbw126Bytes = new Uint8Array(fs.readFileSync(path.join(assetsDir, 'romwbw_sc126.rom')));
 const scmBytes = new Uint8Array(fs.readFileSync(path.join(assetsDir, 'scm_s6.rom')));
 const sdCompressed = fs.readFileSync(path.join(assetsDir, 'sc131_sdcard.simg'));
 const sdBundleBytes = new Uint8Array(zlib.gunzipSync(sdCompressed));
@@ -225,3 +227,70 @@ describe('SC131 Z180 Pocket Computer Emulator', () => {
     assert.match(editScreen, /This is chapter 1\./);
   });
 });
+
+describe('SC126 Z180 RC2014 Motherboard Emulator', () => {
+  test('Boots official RomWBW v3.6.0 (SCZ180_sc126_std.rom), detects DS1302 RTC, SDHC, and drives Port 0x0D 8-LED bar', () => {
+    let consoleOut = '';
+    const diagHistory = [];
+    const sc126 = new SC126({
+      onSerialTx: (ch, b) => {
+        if (ch === 0) consoleOut += String.fromCharCode(b);
+      },
+      onLedChange: (leds) => {
+        if (diagHistory.length === 0 || diagHistory[diagHistory.length - 1] !== leds.diagByte) {
+          diagHistory.push(leds.diagByte);
+        }
+      },
+    });
+    sc126.loadRom(romwbw126Bytes);
+    sc126.sdcard.loadSparseBundle(sdBundleBytes);
+    sc126.reset();
+
+    sc126.runCycles(35_000_000);
+
+    assert.match(consoleOut, /RomWBW HBIOS v3\.6\.0/);
+    assert.match(consoleOut, /Small Computer SC126 \[SCZ180_sc126_std\] Z8S180-N @ 18\.432MHz IO=0xC0/);
+    assert.match(consoleOut, /512KB ROM, 512KB RAM/);
+    assert.match(consoleOut, /ROM VERIFY: 00 00 00 00 PASS/);
+    assert.match(consoleOut, /DSRTC: MODE=STD IO=0x0C/);
+    assert.match(consoleOut, /SD0: SDHC NAME=SC126/);
+    assert.match(consoleOut, /Boot \[H=Help\]:/);
+
+    // Verify 8-bit Port 0x0D diagnostic LED bar progression during POST
+    assert.ok(diagHistory.includes(0x03));
+    assert.ok(diagHistory.includes(0x07));
+    assert.ok(diagHistory.includes(0x0F));
+    assert.ok(diagHistory.includes(0x1F));
+    assert.ok(diagHistory.includes(0x3F));
+    assert.ok(diagHistory.includes(0x7F));
+    assert.ok(diagHistory.includes(0xFF));
+
+    // Launch BASIC and write 0xAA (170) to Port 13 (0x0D)
+    consoleOut = '';
+    sc126.sendSerial(0, 'B\r\r');
+    sc126.runCycles(20_000_000);
+    assert.match(consoleOut, /Z80 BASIC Ver 4\.7b/);
+    sc126.sendSerial(0, 'OUT 13, 170\r');
+    sc126.runCycles(5_000_000);
+    assert.equal(sc126.getLeds().diagByte, 0xAA);
+  });
+
+  test('Boots Small Computer Monitor S6 on SC126 and detects Diagnostic LEDs @ 0D', () => {
+    let consoleOut = '';
+    const sc126 = new SC126({
+      onSerialTx: (ch, b) => {
+        if (ch === 0) consoleOut += String.fromCharCode(b);
+      },
+    });
+    sc126.loadRom(scmBytes);
+    sc126.reset();
+    sc126.runCycles(15_000_000);
+    assert.match(consoleOut, /Small Computer Monitor - SC126/);
+
+    consoleOut = '';
+    sc126.sendSerial(0, 'DEVICES\r');
+    sc126.runCycles(8_000_000);
+    assert.match(consoleOut, /Diagnostic LEDs\s+@ 0D\s+detected/);
+  });
+});
+
