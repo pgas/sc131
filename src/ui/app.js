@@ -176,8 +176,8 @@ class SC131EmulatorApp {
     if (this.syncingTermScroll) return;
     const sb = document.getElementById('term-scrollbar');
     const spacer = document.getElementById('term-scroll-spacer');
-    if (!sb || !spacer) return;
     const term = this.getActiveTerminal();
+    if (!sb || !spacer || !term) return;
     const viewHeight = term.rows * term.charHeight + 16;
     const totalRows = term.rows + term.scrollback.length;
     const totalHeight = totalRows * term.charHeight + 16;

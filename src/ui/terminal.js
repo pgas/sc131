@@ -77,7 +77,7 @@ export class SerialTerminal {
     this.rows = options.rows || 25;
     this.themeName = options.theme || 'amber';
     this.onInput = options.onInput || null;
-    this.onScrollChange = options.onScrollChange || null;
+    this.onScrollChange = null;
     this.wordstarArrows = false; // If true, map arrow keys to ^E/^X/^S/^D
     this.crtScanlines = true;
     this.maxScrollback = 400;
@@ -93,6 +93,7 @@ export class SerialTerminal {
     this.reset();
     this.setupEvents();
     this.setSizePreset(this.sizePreset);
+    this.onScrollChange = options.onScrollChange || null;
   }
 
   setSizePreset(preset) {
