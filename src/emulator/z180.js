@@ -170,6 +170,7 @@ export class Z180 {
 
     this.rxQueue[0].length = 0;
     this.rxQueue[1].length = 0;
+    this.rxNextReadyCycle = [0, 0];
 
     // Initialize Z180 internal I/O registers to hardware reset defaults
     this.ioRegs.fill(0x00);
@@ -329,7 +330,7 @@ export class Z180 {
         return this.ioRegs[reg] & ~0x20;
 
       case Z180_REG.STAT0: {
-        if (this.rxQueue[0].length > 0) {
+        if (this.rxQueue[0].length > 0 && this.cycles >= this.rxNextReadyCycle[0]) {
           this.ioRegs[Z180_REG.STAT0] |= 0x80;
         } else {
           this.ioRegs[Z180_REG.STAT0] &= ~0x80;
@@ -340,7 +341,7 @@ export class Z180 {
       }
 
       case Z180_REG.STAT1: {
-        if (this.rxQueue[1].length > 0) {
+        if (this.rxQueue[1].length > 0 && this.cycles >= this.rxNextReadyCycle[1]) {
           this.ioRegs[Z180_REG.STAT1] |= 0x80;
         } else {
           this.ioRegs[Z180_REG.STAT1] &= ~0x80;
@@ -352,18 +353,16 @@ export class Z180 {
       case Z180_REG.RDR0: {
         const ch = this.rxQueue[0].length > 0 ? this.rxQueue[0].shift() : this.ioRegs[Z180_REG.RDR0];
         this.ioRegs[Z180_REG.RDR0] = ch;
-        if (this.rxQueue[0].length === 0) {
-          this.ioRegs[Z180_REG.STAT0] &= ~0x80;
-        }
+        this.ioRegs[Z180_REG.STAT0] &= ~0x80;
+        this.rxNextReadyCycle[0] = this.cycles + (ch === 0x0D ? 220000 : 4500);
         return ch;
       }
 
       case Z180_REG.RDR1: {
         const ch = this.rxQueue[1].length > 0 ? this.rxQueue[1].shift() : this.ioRegs[Z180_REG.RDR1];
         this.ioRegs[Z180_REG.RDR1] = ch;
-        if (this.rxQueue[1].length === 0) {
-          this.ioRegs[Z180_REG.STAT1] &= ~0x80;
-        }
+        this.ioRegs[Z180_REG.STAT1] &= ~0x80;
+        this.rxNextReadyCycle[1] = this.cycles + (ch === 0x0D ? 220000 : 4500);
         return ch;
       }
 
