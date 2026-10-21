@@ -12,11 +12,34 @@
     <div class="brand">
       <div class="brand-badge">SC131</div>
       <div>
-        <h1>SC131 Z180 Pocket Computer Emulator</h1>
+        <div class="brand-title-row">
+          <h1>SC131 Z180 Pocket Computer</h1>
+          <span id="status-pill" class="pill pill-running">RUNNING @ 18.432 MHz</span>
+        </div>
         <p class="subtitle">
-          Zilog Z8S180 @ 18.432 MHz &bull; 512 KB Flash ROM &bull; 512 KB SRAM &bull; SPI MicroSDHC &bull;
+          Zilog Z8S180 @ 18.432 MHz &bull; 512 KB Flash &bull; 512 KB SRAM &bull; SPI SDHC &bull;
           <a href="https://smallcomputercentral.com/sc131-z180-pocket-computer/" target="_blank" rel="noopener">Small Computer Central</a>
         </p>
+      </div>
+    </div>
+
+    <!-- Compact Always-Visible SC131 LED Cluster -->
+    <div class="mini-hw-cluster" title="Live SC131 Front-Panel &amp; SD Card LEDs">
+      <div class="mini-led-item" title="LED1: Orange Status LED (Port 0x0E Bit 2 Active Low)">
+        <span id="mini-led-status" class="led led-orange on"></span>
+        <span>Status</span>
+      </div>
+      <div class="mini-led-item" title="LED2: Green 5V Power LED">
+        <span id="mini-led-power" class="led led-green on"></span>
+        <span>Power</span>
+      </div>
+      <div class="mini-led-item" title="LED3: Red Reset LED (DS1233 Supervisor / SW1)">
+        <span id="mini-led-reset" class="led led-red"></span>
+        <span>Reset</span>
+      </div>
+      <div class="mini-led-item" title="MicroSDHC SPI Activity (Port 0x0C / CSIO)">
+        <span id="mini-led-sd" class="led led-cyan"></span>
+        <span>SD</span>
       </div>
     </div>
 
@@ -41,25 +64,121 @@
 
       <div class="button-row">
         <button id="btn-run-pause" class="btn btn-primary" title="Pause or Resume CPU Execution">Pause</button>
-        <button id="btn-step" class="btn" title="Single-step one Z180 instruction">Step</button>
+        <button id="btn-step" class="btn" title="Single-step one Z180 instruction (opens CPU &amp; Disassembler)">Step</button>
         <button id="btn-reset" class="btn btn-danger" title="Press SW1 Tactile Reset Button">Reset (SW1)</button>
       </div>
     </div>
+
+    <!-- Flexible Panel Visibility Bar -->
+    <div class="panel-toggle-bar">
+      <span class="panel-bar-label">Panels:</span>
+      <button id="toggle-panel-quickbar" class="btn btn-xs btn-toggle active" data-panel="quickbar" title="Show/Hide Quick Launch Macros">
+        Quick Launch
+      </button>
+      <button id="toggle-panel-hardware" class="btn btn-xs btn-toggle active" data-panel="hardware" title="Show/Hide SC131 Enclosure, PCB &amp; SD Card Panel">
+        Hardware &amp; SD
+      </button>
+      <button id="toggle-panel-cpu" class="btn btn-xs btn-toggle" data-panel="cpu" title="Show/Hide Z8S180 CPU Registers &amp; MMU Inspector">
+        CPU &amp; MMU
+      </button>
+      <button id="toggle-panel-disasm" class="btn btn-xs btn-toggle" data-panel="disasm" title="Show/Hide Z180 Disassembler &amp; Breakpoints">
+        Disassembler
+      </button>
+      <button id="toggle-panel-memory" class="btn btn-xs btn-toggle" data-panel="memory" title="Show/Hide 1 MB Memory Hex Inspector">
+        Memory Hex
+      </button>
+      <span class="panel-bar-sep"></span>
+      <button id="btn-focus-terminal" class="btn btn-xs btn-accent" title="Toggle Terminal Focus Mode (hide all auxiliary panels)">
+        Focus Terminal
+      </button>
+    </div>
   </header>
 
-  <main class="workspace">
-    <!-- Left Column: Interactive SC131 Hardware Panel + Terminal + Quick Actions -->
+  <main id="workspace-grid" class="workspace single-col">
+    <!-- Primary Column: Prominent Terminal + Quick Launch + Hardware Enclosure/PCB -->
     <section class="main-column">
+      <!-- Quick Boot & Macro Bar -->
+      <div id="card-quickbar" class="card quickbar-card">
+        <div class="quickbar-row">
+          <span class="quickbar-label">Quick Launch:</span>
+          <button class="btn btn-xs" data-macro="2.0&#13;" title="Boot CP/M 2.2 from MicroSD Slice 0">SD0.0: CP/M 2.2</button>
+          <button class="btn btn-xs" data-macro="2.1&#13;" title="Boot ZSDOS 1.1 from MicroSD Slice 1">SD0.1: ZSDOS</button>
+          <button class="btn btn-xs" data-macro="2.2&#13;" title="Boot CP/M 3.0 from MicroSD Slice 2">SD0.2: CP/M 3</button>
+          <button class="btn btn-xs" data-macro="2.3&#13;" title="Boot Classic Games Slice (Zork, Adventure, Ladder)">SD0.3: Games</button>
+          <button class="btn btn-xs" data-macro="2.4&#13;" title="Boot WordStar 4 &amp; Office Slice">SD0.4: WordStar</button>
+          <button class="btn btn-xs" data-macro="2.5&#13;" title="Boot Turbo Pascal 3.0 Slice">SD0.5: Turbo Pascal</button>
+          <button class="btn btn-xs" data-macro="C&#13;" title="Boot CP/M 2.2 from ROM Disk">ROM CP/M</button>
+          <button class="btn btn-xs" data-macro="Z&#13;" title="Boot Z-System from ROM Disk">ROM Z-System</button>
+          <button class="btn btn-xs" data-macro="B&#13;&#13;" title="Launch Microsoft / NASCOM BASIC 4.7b">BASIC</button>
+          <button class="btn btn-xs" data-macro="T&#13;" title="Launch Tasty BASIC">Tasty BASIC</button>
+          <button class="btn btn-xs" data-macro="F&#13;" title="Launch CamelForth">Forth</button>
+          <button class="btn btn-xs" data-macro="P&#13;" title="Play Built-in 2048 Game">2048 Game</button>
+          <button class="btn btn-xs" data-macro="M&#13;" title="Launch RomWBW System Monitor">Monitor</button>
+          <button class="btn btn-xs" data-macro="S&#13;" title="List SD Card Slices at Boot Loader">Slices (S)</button>
+          <button id="btn-led-demo" class="btn btn-xs btn-accent" title="Send a BASIC program that blinks the Orange Status LED (Port 14)">LED1 Blink Demo</button>
+          <button class="btn-close-panel" data-close-panel="quickbar" title="Hide Quick Launch Bar">&times;</button>
+        </div>
+      </div>
+
+      <!-- Dual VT100 / ANSI Serial Terminal Card (Prominent Primary View) -->
+      <div class="card terminal-card">
+        <div class="card-header terminal-header">
+          <div class="terminal-tabs">
+            <button id="tab-asci0" class="term-tab active">
+              P3 Serial Port A (ASCI0 Console)
+              <span id="txrx-0" class="activity-dot"></span>
+            </button>
+            <button id="tab-asci1" class="term-tab">
+              P2 Serial Port B (ASCI1 Aux)
+              <span id="txrx-1" class="activity-dot"></span>
+            </button>
+          </div>
+
+          <div class="terminal-toolbar">
+            <select id="term-size-select" class="select-xs" title="Terminal Display Size">
+              <option value="sm">Compact (736&times;466)</option>
+              <option value="md">Medium (816&times;516)</option>
+              <option value="lg" selected>Large (896&times;566)</option>
+              <option value="xl">Extra Large (1056&times;666)</option>
+            </select>
+            <select id="theme-select" class="select-xs" title="Terminal Color Theme">
+              <option value="amber">Amber CRT</option>
+              <option value="green">Green Phosphor</option>
+              <option value="modern">Modern Crisp</option>
+            </select>
+            <label class="checkbox-xs" title="Map Arrow Keys to WordStar Diamond (^E/^X/^S/^D)">
+              <input type="checkbox" id="chk-wordstar" /> WordStar Keys
+            </label>
+            <label class="checkbox-xs" title="Toggle CRT Scanline Overlay">
+              <input type="checkbox" id="chk-scanlines" checked /> Scanlines
+            </label>
+            <button id="btn-paste" class="btn btn-xs" title="Paste Text into Serial Port">Paste</button>
+            <button id="btn-copy-screen" class="btn btn-xs" title="Copy Terminal Screen Text">Copy</button>
+            <button id="btn-clear-term" class="btn btn-xs" title="Clear Terminal Display">Clear</button>
+          </div>
+        </div>
+
+        <div class="terminal-canvas-wrap">
+          <canvas id="term-canvas-0"></canvas>
+          <canvas id="term-canvas-1" class="hidden"></canvas>
+        </div>
+
+        <div class="terminal-footer mono-xs">
+          <span>Click inside the terminal to type &bull; 115200 8N1 FTDI Serial Console &bull; Mouse wheel scrolls history</span>
+          <span id="perf-counter">18.43 MHz &bull; 0 cycles</span>
+        </div>
+      </div>
+
       <!-- SC131 Hardware Visualization Card -->
-      <div class="card hardware-card">
+      <div id="card-hardware" class="card hardware-card">
         <div class="card-header">
           <div class="card-title-group">
-            <h2>SC131 Pocket Computer Hardware</h2>
-            <span id="status-pill" class="pill pill-running">RUNNING @ 18.432 MHz</span>
+            <h2>SC131 Pocket Computer Hardware &amp; MicroSDHC</h2>
           </div>
           <div class="view-toggle">
             <button id="btn-view-front" class="btn btn-sm active">Enclosure Front / Rear</button>
             <button id="btn-view-pcb" class="btn btn-sm">Motherboard PCB &amp; Jumpers</button>
+            <button class="btn-close-panel" data-close-panel="hardware" title="Hide Hardware Panel">&times;</button>
           </div>
         </div>
 
@@ -215,80 +334,18 @@
           </div>
         </div>
       </div>
-
-      <!-- Quick Boot & Macro Bar -->
-      <div class="card quickbar-card">
-        <div class="quickbar-row">
-          <span class="quickbar-label">Quick Launch:</span>
-          <button class="btn btn-xs" data-macro="2.0&#13;" title="Boot CP/M 2.2 from MicroSD Slice 0">SD0.0: CP/M 2.2</button>
-          <button class="btn btn-xs" data-macro="2.1&#13;" title="Boot ZSDOS 1.1 from MicroSD Slice 1">SD0.1: ZSDOS</button>
-          <button class="btn btn-xs" data-macro="2.2&#13;" title="Boot CP/M 3.0 from MicroSD Slice 2">SD0.2: CP/M 3</button>
-          <button class="btn btn-xs" data-macro="2.3&#13;" title="Boot Classic Games Slice (Zork, Adventure, Star Trek, Sargon)">SD0.3: Games</button>
-          <button class="btn btn-xs" data-macro="2.4&#13;" title="Boot WordStar 4 &amp; Office Slice">SD0.4: WordStar</button>
-          <button class="btn btn-xs" data-macro="2.5&#13;" title="Boot Turbo Pascal 3.0 Slice">SD0.5: Turbo Pascal</button>
-          <button class="btn btn-xs" data-macro="C&#13;" title="Boot CP/M 2.2 from ROM Disk">ROM CP/M</button>
-          <button class="btn btn-xs" data-macro="Z&#13;" title="Boot Z-System from ROM Disk">ROM Z-System</button>
-          <button class="btn btn-xs" data-macro="B&#13;&#13;" title="Launch Microsoft / NASCOM BASIC 4.7b">BASIC</button>
-          <button class="btn btn-xs" data-macro="T&#13;" title="Launch Tasty BASIC">Tasty BASIC</button>
-          <button class="btn btn-xs" data-macro="F&#13;" title="Launch CamelForth">Forth</button>
-          <button class="btn btn-xs" data-macro="P&#13;" title="Play Built-in 2048 Game">2048 Game</button>
-          <button class="btn btn-xs" data-macro="M&#13;" title="Launch RomWBW System Monitor">Monitor</button>
-          <button class="btn btn-xs" data-macro="S&#13;" title="List SD Card Slices at Boot Loader">Slices (S)</button>
-          <button id="btn-led-demo" class="btn btn-xs btn-accent" title="Send a BASIC program that blinks the Orange Status LED (Port 14)">LED1 Blink Demo</button>
-        </div>
-      </div>
-
-      <!-- Dual VT100 / ANSI Serial Terminal Card -->
-      <div class="card terminal-card">
-        <div class="card-header terminal-header">
-          <div class="terminal-tabs">
-            <button id="tab-asci0" class="term-tab active">
-              P3 Serial Port A (ASCI0 Console)
-              <span id="txrx-0" class="activity-dot"></span>
-            </button>
-            <button id="tab-asci1" class="term-tab">
-              P2 Serial Port B (ASCI1 Aux)
-              <span id="txrx-1" class="activity-dot"></span>
-            </button>
-          </div>
-
-          <div class="terminal-toolbar">
-            <select id="theme-select" class="select-xs" title="Terminal Color Theme">
-              <option value="amber">Amber CRT</option>
-              <option value="green">Green Phosphor</option>
-              <option value="modern">Modern Crisp</option>
-            </select>
-            <label class="checkbox-xs" title="Map Arrow Keys to WordStar Diamond (^E/^X/^S/^D)">
-              <input type="checkbox" id="chk-wordstar" /> WordStar Keys
-            </label>
-            <label class="checkbox-xs" title="Toggle CRT Scanline Overlay">
-              <input type="checkbox" id="chk-scanlines" checked /> Scanlines
-            </label>
-            <button id="btn-paste" class="btn btn-xs" title="Paste Text into Serial Port">Paste</button>
-            <button id="btn-copy-screen" class="btn btn-xs" title="Copy Terminal Screen Text">Copy</button>
-            <button id="btn-clear-term" class="btn btn-xs" title="Clear Terminal Display">Clear</button>
-          </div>
-        </div>
-
-        <div class="terminal-canvas-wrap">
-          <canvas id="term-canvas-0"></canvas>
-          <canvas id="term-canvas-1" class="hidden"></canvas>
-        </div>
-
-        <div class="terminal-footer mono-xs">
-          <span>Click inside the terminal to type. Standard 115200 8N1 FTDI Serial Console.</span>
-          <span id="perf-counter">18.43 MHz &bull; 0 cycles</span>
-        </div>
-      </div>
     </section>
 
-    <!-- Right Column: Z180 CPU Registers, MMU Inspector, Disassembler & Memory Viewer -->
-    <aside class="side-column">
+    <!-- Right Column: On-Demand Z180 CPU Registers, MMU Inspector, Disassembler & Memory Viewer -->
+    <aside id="side-column" class="side-column hidden">
       <!-- Z180 CPU & MMU State -->
-      <div class="card inspector-card">
+      <div id="card-cpu" class="card inspector-card hidden">
         <div class="card-header">
-          <h2>Z8S180 CPU &amp; MMU Inspector</h2>
-          <span id="cpu-mode-badge" class="badge-mini">IM 2 &bull; EI</span>
+          <h2>Z8S180 CPU &amp; MMU</h2>
+          <div class="inspector-header-actions">
+            <span id="cpu-mode-badge" class="badge-mini">IM 2 &bull; EI</span>
+            <button class="btn-close-panel" data-close-panel="cpu" title="Hide CPU &amp; MMU Panel">&times;</button>
+          </div>
         </div>
 
         <div class="regs-grid mono-sm">
@@ -318,30 +375,43 @@
         </div>
       </div>
 
-      <!-- Live Z80/Z180 Disassembler & Breakpoints -->
-      <div class="card inspector-card">
+      <!-- On-Demand Z80/Z180 Disassembler & Breakpoints -->
+      <div id="card-disasm" class="card inspector-card hidden">
         <div class="card-header">
           <h2>Z180 Disassembler</h2>
           <div class="bp-controls">
-            <input type="text" id="bp-input" class="input-xs mono-xs" placeholder="BP Hex (e.g. 0100)" maxlength="4" />
+            <label class="checkbox-xs" title="Continuously disassemble while CPU is running (otherwise updates on Pause/Step/Refresh)">
+              <input type="checkbox" id="chk-disasm-live" /> Live
+            </label>
+            <button id="btn-disasm-refresh" class="btn btn-xs" title="Disassemble at current PC now">Refresh</button>
+            <input type="text" id="bp-input" class="input-xs mono-xs" placeholder="BP Hex" maxlength="4" />
             <button id="btn-add-bp" class="btn btn-xs">+BP</button>
             <button id="btn-clear-bp" class="btn btn-xs">Clear</button>
+            <button class="btn-close-panel" data-close-panel="disasm" title="Hide Disassembler Panel">&times;</button>
           </div>
+        </div>
+        <div id="disasm-status-note" class="inspector-note mono-xs">
+          Paused/On-Demand mode (zero CPU overhead while running). Click <strong>Refresh</strong>, <strong>Step</strong>, or check <strong>Live</strong>.
         </div>
         <div id="disasm-view" class="disasm-list mono-xs"></div>
       </div>
 
-      <!-- Memory Hex Viewer -->
-      <div class="card inspector-card">
+      <!-- On-Demand Memory Hex Viewer -->
+      <div id="card-memory" class="card inspector-card hidden">
         <div class="card-header">
           <h2>Memory Hex Inspector</h2>
           <div class="mem-controls">
+            <label class="checkbox-xs" title="Continuously refresh hex dump while CPU is running">
+              <input type="checkbox" id="chk-mem-live" /> Live
+            </label>
+            <button id="btn-mem-refresh" class="btn btn-xs" title="Refresh Hex Dump">Refresh</button>
             <select id="mem-space-select" class="select-xs">
-              <option value="logical">Logical CPU (64 KB)</option>
-              <option value="rom">Physical ROM (512 KB)</option>
-              <option value="ram">Physical SRAM (512 KB)</option>
+              <option value="logical">Logical (64K)</option>
+              <option value="rom">ROM (512K)</option>
+              <option value="ram">SRAM (512K)</option>
             </select>
             <input type="text" id="mem-addr-input" class="input-xs mono-xs" value="0000" placeholder="Hex Addr" maxlength="5" />
+            <button class="btn-close-panel" data-close-panel="memory" title="Hide Memory Hex Panel">&times;</button>
           </div>
         </div>
         <pre id="mem-hex-view" class="hex-dump mono-xs"></pre>

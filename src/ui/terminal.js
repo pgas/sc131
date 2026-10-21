@@ -80,14 +80,31 @@ export class SerialTerminal {
     this.wordstarArrows = false; // If true, map arrow keys to ^E/^X/^S/^D
     this.crtScanlines = true;
 
-    this.charWidth = 9;
-    this.charHeight = 18;
+    this.charWidth = 11;
+    this.charHeight = 22;
+    this.fontSize = 16;
+    this.sizePreset = options.size || 'lg';
     this.cursorBlink = true;
     this.cursorVisible = true;
     this.focused = false;
 
     this.reset();
     this.setupEvents();
+    this.setSizePreset(this.sizePreset);
+  }
+
+  setSizePreset(preset) {
+    const presets = {
+      sm: { cw: 9, ch: 18, fs: 14 },
+      md: { cw: 10, ch: 20, fs: 15 },
+      lg: { cw: 11, ch: 22, fs: 16.5 },
+      xl: { cw: 13, ch: 26, fs: 19.5 },
+    };
+    const p = presets[preset] || presets.lg;
+    this.sizePreset = preset;
+    this.charWidth = p.cw;
+    this.charHeight = p.ch;
+    this.fontSize = p.fs;
     this.resizeCanvas();
   }
 
@@ -157,6 +174,8 @@ export class SerialTerminal {
     const height = this.rows * this.charHeight + 16;
     this.canvas.width = width * dpr;
     this.canvas.height = height * dpr;
+    this.canvas.style.width = `${width}px`;
+    this.canvas.style.height = `${height}px`;
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.dirty = true;
     this.render();
@@ -674,7 +693,7 @@ export class SerialTerminal {
     ctx.fillStyle = theme.bg;
     ctx.fillRect(0, 0, width, height);
 
-    ctx.font = `14px "JetBrains Mono", "Fira Code", "Cascadia Mono", "Courier New", monospace`;
+    ctx.font = `${this.fontSize || 16}px "JetBrains Mono", "Fira Code", "Cascadia Mono", "Courier New", monospace`;
     ctx.textBaseline = 'top';
 
     const totalLines = this.scrollback.length + this.rows;

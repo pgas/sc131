@@ -1,7 +1,7 @@
 /**
  * Main Browser Application for SC131 Z180 Pocket Computer Emulator
  * Wires SC131 hardware emulation, dual ASCI serial terminals, MicroSDHC manager,
- * interactive front panel / PCB jumpers, and live Z8S180 CPU/MMU debugger.
+ * interactive front panel / PCB jumpers, flexible panel manager, and on-demand Z8S180 debugger.
  */
 
 import { SC131 } from '../emulator/sc131.js';
@@ -34,6 +34,18 @@ class SC131EmulatorApp {
     this.sdBlinkTimeout = null;
     this.romCache = {};
 
+    // Flexible panel visibility state (debugger/disassembler off by default so Terminal is prominent)
+    this.panels = {
+      quickbar: true,
+      hardware: true,
+      cpu: false,
+      disasm: false,
+      memory: false,
+    };
+    this.savedPanelsBeforeFocus = null;
+    this.disasmLive = false;
+    this.memoryLive = false;
+
     // Initialize terminals
     const canvas0 = document.getElementById('term-canvas-0');
     const canvas1 = document.getElementById('term-canvas-1');
@@ -41,6 +53,7 @@ class SC131EmulatorApp {
     this.term0 = new SerialTerminal(canvas0, {
       cols: 80,
       rows: 25,
+      size: 'lg',
       theme: 'amber',
       onInput: (b) => {
         this.sc131.sendSerial(0, b);
@@ -51,6 +64,7 @@ class SC131EmulatorApp {
     this.term1 = new SerialTerminal(canvas1, {
       cols: 80,
       rows: 25,
+      size: 'lg',
       theme: 'amber',
       onInput: (b) => {
         this.sc131.sendSerial(1, b);
@@ -70,6 +84,7 @@ class SC131EmulatorApp {
     });
 
     this.bindUI();
+    this.applyPanelsUI();
     this.bootDefaultSystem();
   }
 
@@ -86,23 +101,96 @@ class SC131EmulatorApp {
     document.getElementById('led-power')?.classList.toggle('on', leds.power);
     document.getElementById('led-reset')?.classList.toggle('on', leds.reset);
     document.getElementById('led-sd-act')?.classList.toggle('on', leds.sdSelect);
+
+    // Topbar mini-LED cluster (always visible even in Terminal Focus mode)
+    document.getElementById('mini-led-status')?.classList.toggle('on', leds.status);
+    document.getElementById('mini-led-power')?.classList.toggle('on', leds.power);
+    document.getElementById('mini-led-reset')?.classList.toggle('on', leds.reset);
+    document.getElementById('mini-led-sd')?.classList.toggle('on', leds.sdSelect);
   }
 
   handleSdActivity(op, lba) {
-    const opEl = document.getElementById('sd-last-op');
-    const lbaEl = document.getElementById('sd-last-lba');
-    const rwEl = document.getElementById('sd-rw-count');
-    if (opEl) opEl.textContent = op;
-    if (lbaEl) lbaEl.textContent = '0x' + hex6(lba);
-    if (rwEl) rwEl.textContent = `${this.sc131.sdcard.readCount} / ${this.sc131.sdcard.writeCount}`;
+    if (this.panels.hardware) {
+      const opEl = document.getElementById('sd-last-op');
+      const lbaEl = document.getElementById('sd-last-lba');
+      const rwEl = document.getElementById('sd-rw-count');
+      if (opEl) opEl.textContent = op;
+      if (lbaEl) lbaEl.textContent = '0x' + hex6(lba);
+      if (rwEl) rwEl.textContent = `${this.sc131.sdcard.readCount} / ${this.sc131.sdcard.writeCount}`;
+    }
 
     const sdLed = document.getElementById('led-sd-act');
-    if (sdLed) {
-      sdLed.classList.add('on');
-      clearTimeout(this.sdBlinkTimeout);
-      this.sdBlinkTimeout = setTimeout(() => {
-        sdLed.classList.toggle('on', this.sc131.getLeds().sdSelect);
-      }, 65);
+    const miniSdLed = document.getElementById('mini-led-sd');
+    sdLed?.classList.add('on');
+    miniSdLed?.classList.add('on');
+    clearTimeout(this.sdBlinkTimeout);
+    this.sdBlinkTimeout = setTimeout(() => {
+      const sel = this.sc131.getLeds().sdSelect;
+      sdLed?.classList.toggle('on', sel);
+      miniSdLed?.classList.toggle('on', sel);
+    }, 65);
+  }
+
+  /**
+   * Toggle or set visibility of any workspace panel and update grid layout
+   */
+  setPanelVisible(panelKey, visible) {
+    if (!(panelKey in this.panels)) return;
+    this.panels[panelKey] = Boolean(visible);
+    this.savedPanelsBeforeFocus = null;
+    this.applyPanelsUI();
+
+    // Immediately populate the newly opened panel once
+    if (visible) {
+      if (panelKey === 'cpu') this.updateCpuMmuUI();
+      if (panelKey === 'disasm') this.updateDisasmUI(true);
+      if (panelKey === 'memory') this.updateMemoryHexUI(true);
+    }
+  }
+
+  toggleFocusTerminal() {
+    const anyAuxOpen = Object.values(this.panels).some(Boolean);
+    if (anyAuxOpen) {
+      this.savedPanelsBeforeFocus = { ...this.panels };
+      for (const k of Object.keys(this.panels)) this.panels[k] = false;
+    } else if (this.savedPanelsBeforeFocus) {
+      this.panels = { ...this.savedPanelsBeforeFocus };
+      this.savedPanelsBeforeFocus = null;
+    } else {
+      this.panels.quickbar = true;
+      this.panels.hardware = true;
+    }
+    this.applyPanelsUI();
+    (this.activeSerialTab === 0 ? this.term0 : this.term1).canvas.focus();
+  }
+
+  applyPanelsUI() {
+    const map = {
+      quickbar: 'card-quickbar',
+      hardware: 'card-hardware',
+      cpu: 'card-cpu',
+      disasm: 'card-disasm',
+      memory: 'card-memory',
+    };
+
+    for (const [key, cardId] of Object.entries(map)) {
+      const card = document.getElementById(cardId);
+      const btn = document.querySelector(`[data-panel="${key}"]`);
+      const isVis = this.panels[key];
+      card?.classList.toggle('hidden', !isVis);
+      btn?.classList.toggle('active', isVis);
+    }
+
+    const anySideVisible = this.panels.cpu || this.panels.disasm || this.panels.memory;
+    const sideCol = document.getElementById('side-column');
+    const workspace = document.getElementById('workspace-grid');
+    sideCol?.classList.toggle('hidden', !anySideVisible);
+    workspace?.classList.toggle('single-col', !anySideVisible);
+
+    const focusBtn = document.getElementById('btn-focus-terminal');
+    const anyAuxOpen = Object.values(this.panels).some(Boolean);
+    if (focusBtn) {
+      focusBtn.textContent = anyAuxOpen ? 'Focus Terminal' : 'Exit Focus Mode';
     }
   }
 
@@ -172,7 +260,7 @@ class SC131EmulatorApp {
       this.sc131.resetPulseRemainingMs = 0;
       this.sc131.notifyLeds();
       this.updateStatusPill();
-      this.updateInspectorUI();
+      this.updateInspectorUI(true);
     }, durationMs);
   }
 
@@ -192,7 +280,6 @@ class SC131EmulatorApp {
   }
 
   runLedBlinkDemo() {
-    // Send a BASIC program that toggles SC131 Status LED (Port 14 / 0x0E)
     const prog = [
       '10 PRINT "SC131 STATUS LED1 (PORT 14) BLINK DEMO"',
       '20 FOR I=1 TO 6',
@@ -209,6 +296,27 @@ class SC131EmulatorApp {
   }
 
   bindUI() {
+    // Panel toggle buttons in topbar
+    document.querySelectorAll('[data-panel]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const key = btn.getAttribute('data-panel');
+        if (key) this.setPanelVisible(key, !this.panels[key]);
+      });
+    });
+
+    // Close ('x') buttons inside individual cards
+    document.querySelectorAll('[data-close-panel]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const key = btn.getAttribute('data-close-panel');
+        if (key) this.setPanelVisible(key, false);
+      });
+    });
+
+    // Terminal Focus Mode button
+    document.getElementById('btn-focus-terminal')?.addEventListener('click', () => {
+      this.toggleFocusTerminal();
+    });
+
     // Firmware selector
     document.getElementById('firmware-select')?.addEventListener('change', (e) => {
       this.switchFirmware(e.target.value);
@@ -225,18 +333,23 @@ class SC131EmulatorApp {
       this.running = !this.running;
       this.updateRunPauseButton();
       this.updateStatusPill();
-      this.updateInspectorUI();
+      this.updateInspectorUI(true);
     });
 
-    // Single Step
+    // Single Step (automatically reveals CPU & Disassembler panels so user can see the step)
     document.getElementById('btn-step')?.addEventListener('click', () => {
       this.running = false;
       this.updateRunPauseButton();
+      if (!this.panels.cpu && !this.panels.disasm) {
+        this.panels.cpu = true;
+        this.panels.disasm = true;
+        this.applyPanelsUI();
+      }
       this.sc131.cpu.step();
       this.term0.render();
       this.term1.render();
       this.updateStatusPill();
-      this.updateInspectorUI();
+      this.updateInspectorUI(true);
     });
 
     // Reset buttons (topbar + SW1 tactile button on front panel)
@@ -298,7 +411,6 @@ class SC131EmulatorApp {
       if (vccVal) vccVal.textContent = v.toFixed(2) + 'V';
       const nowReset = this.sc131.isHeldInReset();
       if (wasReset && !nowReset) {
-        // Recovering from brownout triggers DS1233 clean reset
         this.triggerHardwareResetPulse(250);
       } else {
         this.sc131.notifyLeds();
@@ -396,6 +508,14 @@ class SC131EmulatorApp {
       this.term1.canvas.focus();
     });
 
+    // Terminal Size selector
+    document.getElementById('term-size-select')?.addEventListener('change', (e) => {
+      const preset = e.target.value;
+      this.term0.setSizePreset(preset);
+      this.term1.setSizePreset(preset);
+      (this.activeSerialTab === 0 ? this.term0 : this.term1).canvas.focus();
+    });
+
     // Terminal toolbar controls
     document.getElementById('theme-select')?.addEventListener('change', (e) => {
       this.term0.setTheme(e.target.value);
@@ -438,6 +558,18 @@ class SC131EmulatorApp {
       term.canvas.focus();
     });
 
+    // Disassembler Live & Refresh controls
+    document.getElementById('chk-disasm-live')?.addEventListener('change', (e) => {
+      this.disasmLive = e.target.checked;
+      const note = document.getElementById('disasm-status-note');
+      if (note) note.classList.toggle('hidden', this.disasmLive);
+      if (this.disasmLive) this.updateDisasmUI(true);
+    });
+
+    document.getElementById('btn-disasm-refresh')?.addEventListener('click', () => {
+      this.updateDisasmUI(true);
+    });
+
     // Breakpoint controls
     document.getElementById('btn-add-bp')?.addEventListener('click', () => {
       const input = document.getElementById('bp-input');
@@ -448,18 +580,23 @@ class SC131EmulatorApp {
         if (this.sc131.breakpoints.has(a16)) this.sc131.breakpoints.delete(a16);
         else this.sc131.breakpoints.add(a16);
         input.value = '';
-        this.updateInspectorUI();
+        this.updateDisasmUI(true);
       }
     });
 
     document.getElementById('btn-clear-bp')?.addEventListener('click', () => {
       this.sc131.breakpoints.clear();
-      this.updateInspectorUI();
+      this.updateDisasmUI(true);
     });
 
-    // Memory viewer controls
-    document.getElementById('mem-space-select')?.addEventListener('change', () => this.updateMemoryHexUI());
-    document.getElementById('mem-addr-input')?.addEventListener('input', () => this.updateMemoryHexUI());
+    // Memory viewer Live, Refresh, Space & Address controls
+    document.getElementById('chk-mem-live')?.addEventListener('change', (e) => {
+      this.memoryLive = e.target.checked;
+      if (this.memoryLive) this.updateMemoryHexUI(true);
+    });
+    document.getElementById('btn-mem-refresh')?.addEventListener('click', () => this.updateMemoryHexUI(true));
+    document.getElementById('mem-space-select')?.addEventListener('change', () => this.updateMemoryHexUI(true));
+    document.getElementById('mem-addr-input')?.addEventListener('input', () => this.updateMemoryHexUI(true));
   }
 
   updateRunPauseButton() {
@@ -501,8 +638,12 @@ class SC131EmulatorApp {
         const { breakpointHit } = this.sc131.runCycles(targetCycles);
         if (breakpointHit) {
           this.running = false;
+          this.panels.cpu = true;
+          this.panels.disasm = true;
+          this.applyPanelsUI();
           this.updateRunPauseButton();
           this.updateStatusPill();
+          this.updateInspectorUI(true);
         }
       }
 
@@ -510,9 +651,9 @@ class SC131EmulatorApp {
       this.term1.render();
 
       uiTick++;
-      if (uiTick >= 4 || !this.running) {
+      if (uiTick >= 6) {
         uiTick = 0;
-        this.updateInspectorUI();
+        this.updateInspectorUI(false);
       }
 
       requestAnimationFrame(frame);
@@ -521,9 +662,45 @@ class SC131EmulatorApp {
     requestAnimationFrame(frame);
   }
 
-  updateInspectorUI() {
+  /**
+   * Updates only the visible panels. Disassembler and Memory Hex are only recomputed
+   * when forced (Pause/Step/Reset/Refresh) or when their "Live" checkbox is enabled.
+   */
+  updateInspectorUI(force = false) {
     const st = this.sc131.cpu.getState();
+    const mhz = (st.phiHz / 1e6).toFixed(3);
 
+    const perfEl = document.getElementById('perf-counter');
+    if (perfEl) {
+      perfEl.textContent = `PHI ${mhz} MHz • ${(st.cycles / 1e6).toFixed(1)}M T-states`;
+    }
+
+    if (this.panels.hardware) {
+      const s0 = this.sc131.getSerialConfig(0);
+      const s1 = this.sc131.getSerialConfig(1);
+      const phiEl = document.getElementById('pcb-phi-label');
+      const a0El = document.getElementById('asci0-cfg');
+      const a1El = document.getElementById('asci1-cfg');
+      if (phiEl) phiEl.textContent = `PHI = ${mhz} MHz`;
+      if (a0El) a0El.textContent = `${s0.baud} ${s0.framing}`;
+      if (a1El) a1El.textContent = `${s1.baud} ${s1.framing}`;
+      document.getElementById('asci0-rts')?.classList.toggle('on', s0.rts);
+    }
+
+    if (this.panels.cpu) {
+      this.updateCpuMmuUI(st);
+    }
+
+    if (this.panels.disasm && (force || !this.running || this.disasmLive)) {
+      this.updateDisasmUI(true, st);
+    }
+
+    if (this.panels.memory && (force || !this.running || this.memoryLive)) {
+      this.updateMemoryHexUI(true);
+    }
+  }
+
+  updateCpuMmuUI(st = this.sc131.cpu.getState()) {
     const setTxt = (id, txt) => {
       const el = document.getElementById(id);
       if (el && el.textContent !== txt) el.textContent = txt;
@@ -557,18 +734,6 @@ class SC131EmulatorApp {
     setTxt('reg-flags', flagStr);
     setTxt('cpu-mode-badge', `IM ${st.im} • ${st.iff1 ? 'EI' : 'DI'}${st.halted ? ' • HALT' : ''}`);
 
-    const mhz = (st.phiHz / 1e6).toFixed(3);
-    setTxt('pcb-phi-label', `PHI = ${mhz} MHz`);
-    setTxt('perf-counter', `PHI ${mhz} MHz • ${(st.cycles / 1e6).toFixed(1)}M T-states`);
-
-    // Serial port configs
-    const s0 = this.sc131.getSerialConfig(0);
-    const s1 = this.sc131.getSerialConfig(1);
-    setTxt('asci0-cfg', `${s0.baud} ${s0.framing}`);
-    setTxt('asci1-cfg', `${s1.baud} ${s1.framing}`);
-    document.getElementById('asci0-rts')?.classList.toggle('on', s0.rts);
-
-    // MMU summary
     const mmu = this.sc131.getMmuSummary();
     setTxt('mmu-regs-raw', `CBAR=${hex2(mmu.cbar)} BBR=${hex2(mmu.bbr)} CBR=${hex2(mmu.cbr)}`);
     const mmuContainer = document.getElementById('mmu-bars');
@@ -587,36 +752,37 @@ class SC131EmulatorApp {
         </div>`;
       }).join('');
     }
-
-    // Disassembler view around PC
-    const disasmEl = document.getElementById('disasm-view');
-    if (disasmEl) {
-      const lines = disassembleRange((a) => this.sc131.cpu.memRead(a), st.pc, 10);
-      disasmEl.innerHTML = lines.map((inst) => {
-        const isPc = inst.addr === st.pc;
-        const hasBp = this.sc131.breakpoints.has(inst.addr);
-        const bytesHex = inst.bytes.map((b) => hex2(b)).join(' ');
-        return `<div class="disasm-row ${isPc ? 'current-pc' : ''} ${hasBp ? 'has-bp' : ''}" data-addr="${inst.addr}">
-          <span>${hasBp ? '●' : ' '}$${hex4(inst.addr)}</span>
-          <span>${bytesHex}</span>
-          <span>${inst.mnemonic}</span>
-        </div>`;
-      }).join('');
-
-      disasmEl.querySelectorAll('.disasm-row').forEach((row) => {
-        row.addEventListener('click', () => {
-          const a = parseInt(row.getAttribute('data-addr'), 10);
-          if (this.sc131.breakpoints.has(a)) this.sc131.breakpoints.delete(a);
-          else this.sc131.breakpoints.add(a);
-          this.updateInspectorUI();
-        });
-      });
-    }
-
-    this.updateMemoryHexUI();
   }
 
-  updateMemoryHexUI() {
+  updateDisasmUI(force = false, st = this.sc131.cpu.getState()) {
+    if (!this.panels.disasm && !force) return;
+    const disasmEl = document.getElementById('disasm-view');
+    if (!disasmEl) return;
+
+    const lines = disassembleRange((a) => this.sc131.cpu.memRead(a), st.pc, 12);
+    disasmEl.innerHTML = lines.map((inst) => {
+      const isPc = inst.addr === st.pc;
+      const hasBp = this.sc131.breakpoints.has(inst.addr);
+      const bytesHex = inst.bytes.map((b) => hex2(b)).join(' ');
+      return `<div class="disasm-row ${isPc ? 'current-pc' : ''} ${hasBp ? 'has-bp' : ''}" data-addr="${inst.addr}">
+        <span>${hasBp ? '●' : ' '}$${hex4(inst.addr)}</span>
+        <span>${bytesHex}</span>
+        <span>${inst.mnemonic}</span>
+      </div>`;
+    }).join('');
+
+    disasmEl.querySelectorAll('.disasm-row').forEach((row) => {
+      row.addEventListener('click', () => {
+        const a = parseInt(row.getAttribute('data-addr'), 10);
+        if (this.sc131.breakpoints.has(a)) this.sc131.breakpoints.delete(a);
+        else this.sc131.breakpoints.add(a);
+        this.updateDisasmUI(true);
+      });
+    });
+  }
+
+  updateMemoryHexUI(force = false) {
+    if (!this.panels.memory && !force) return;
     const space = document.getElementById('mem-space-select')?.value || 'logical';
     const addrStr = document.getElementById('mem-addr-input')?.value || '0000';
     const baseAddr = parseInt(addrStr, 16) || 0;

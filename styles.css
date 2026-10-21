@@ -88,6 +88,87 @@ a:hover {
   color: #f8fafc;
 }
 
+.brand-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mini-hw-cluster {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #131c2b;
+  border: 1px solid #24344d;
+  border-radius: 7px;
+  padding: 6px 12px;
+}
+
+.mini-led-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+.panel-toggle-bar {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid #182232;
+}
+
+.panel-bar-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin-right: 4px;
+}
+
+.panel-bar-sep {
+  width: 1px;
+  height: 16px;
+  background: #26354d;
+  margin: 0 4px;
+}
+
+.btn-toggle {
+  background: #141d2b;
+  color: #94a3b8;
+  border: 1px solid #24334a;
+}
+
+.btn-toggle.active {
+  background: rgba(226, 185, 85, 0.16);
+  color: var(--sc131-gold-bright);
+  border-color: var(--sc131-gold);
+}
+
+.btn-close-panel {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #64748b;
+  font-size: 15px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-left: auto;
+}
+.btn-close-panel:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #f87171;
+}
+
 .subtitle {
   font-size: 12px;
   color: var(--text-muted);
@@ -199,14 +280,19 @@ select, input[type="text"] {
 /* Main Workspace Layout */
 .workspace {
   display: grid;
-  grid-template-columns: minmax(740px, 1fr) 410px;
+  grid-template-columns: minmax(760px, 1fr) 420px;
   gap: 14px;
   padding: 14px 18px;
-  max-width: 1600px;
+  max-width: 1680px;
   margin: 0 auto;
 }
 
-@media (max-width: 1220px) {
+.workspace.single-col {
+  grid-template-columns: 1fr;
+  max-width: 1220px;
+}
+
+@media (max-width: 1260px) {
   .workspace {
     grid-template-columns: 1fr;
   }
@@ -705,12 +791,12 @@ select, input[type="text"] {
   display: flex;
   justify-content: center;
   overflow-x: auto;
-  padding: 4px;
+  padding: 6px;
 }
 
 #term-canvas-0, #term-canvas-1 {
-  width: 736px;
-  height: 466px;
+  max-width: 100%;
+  height: auto;
   outline: none;
   cursor: text;
 }
@@ -723,6 +809,21 @@ select, input[type="text"] {
 }
 
 /* Right Column: CPU / MMU / Disassembler / Hex Inspector */
+.inspector-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.inspector-note {
+  background: rgba(56, 189, 248, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  color: #93c5fd;
+  padding: 4px 7px;
+  border-radius: 4px;
+  margin-bottom: 6px;
+}
+
 .regs-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
