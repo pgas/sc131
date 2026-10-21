@@ -33,9 +33,10 @@
       </div>
 
       <div class="control-group">
-        <label for="firmware-select">ROM Firmware (U1)</label>
-        <select id="firmware-select" title="Select Flash ROM Firmware Image">
+        <label for="firmware-select">ROM / OS System</label>
+        <select id="firmware-select" title="Select Flash ROM Firmware / OS Image">
           <option id="fw-opt-romwbw" value="romwbw">RomWBW v3.6.0 (SCZ180_sc131_std)</option>
+          <option value="fuzix">Fuzix 0.4 Unix OS (rcbus-z180)</option>
           <option value="scm_s6">Small Computer Monitor S6 (SCM S6)</option>
         </select>
       </div>
@@ -80,6 +81,7 @@
           <button class="btn btn-xs" data-macro="P&#13;" title="Play Built-in 2048 Game">2048 Game</button>
           <button class="btn btn-xs" data-macro="M&#13;" title="Launch RomWBW System Monitor">Monitor</button>
           <button class="btn btn-xs" data-macro="S&#13;" title="List SD Card Slices at Boot Loader">Slices (S)</button>
+          <button id="btn-fuzix-launch" class="btn btn-xs" title="Mount Fuzix 0.4 Unix SDHC image and boot to login prompt (login: root)">Fuzix 0.4 Unix</button>
           <button id="btn-led-demo" class="btn btn-xs btn-accent" title="Launch BASIC and run the hardware LED demo">LED1 Blink Demo</button>
         </div>
       </div>
@@ -126,6 +128,9 @@
           <div class="terminal-viewport">
             <canvas id="term-canvas-0"></canvas>
             <canvas id="term-canvas-1" class="hidden"></canvas>
+            <div id="term-scrollbar" class="term-scrollbar" title="Scroll terminal history">
+              <div id="term-scroll-spacer"></div>
+            </div>
           </div>
         </div>
 

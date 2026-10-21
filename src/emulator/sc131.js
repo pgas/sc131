@@ -212,17 +212,16 @@ export class SC131 {
     const p = port & 0xFF;
     if ((p & 0xC0) === 0x00) {
       const bit2 = (val >> 2) & 1;
-      // Check partial decoding for U5 (74HCT259):
       // Conventional ports are 0x0C (SPI /CS) and 0x0E (Status LED),
-      // while SCM S6 also writes diagnostic LEDs to 0x0D.
-      if ((p & 0x22) === 0x00) {
-        // 0b00X0XX0X -> SPI /CS latch (0x0C)
+      // while Fuzix & SCM S6 also write diagnostic LEDs to 0x0D.
+      if ((p & 0x23) === 0x00) {
+        // 0b00X0XX00 -> SPI /CS latch (0x0C)
         const prev = this.u5Latch[0];
         this.u5Latch[0] = bit2;
         this.sdcard.setChipSelect(bit2 === 0);
         if (prev !== bit2) this.notifyLeds();
-      } else if ((p & 0x22) === 0x02) {
-        // 0b00X0XX1X -> Status LED1 latch (0x0E)
+      } else if ((p & 0x22) === 0x02 || p === 0x0D) {
+        // 0b00X0XX1X -> Status LED1 latch (0x0E / 0x0D)
         const prev = this.u5Latch[1];
         this.u5Latch[1] = bit2;
         if (prev !== bit2) this.notifyLeds();

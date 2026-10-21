@@ -28,6 +28,7 @@ export class SDCard {
 
     this.present = true;
     this.writeProtected = false;
+    this.emptyFillByte = 0xE5;
     this.readCount = 0;
     this.writeCount = 0;
     this.lastLba = 0;
@@ -87,11 +88,13 @@ export class SDCard {
   loadSparseBundle(bundleBytes) {
     const view = new DataView(bundleBytes.buffer, bundleBytes.byteOffset, bundleBytes.byteLength);
     const magic = String.fromCharCode(...bundleBytes.subarray(0, 8));
-    if (magic !== 'SC131SD1') {
+    if (magic !== 'SC131SD1' && magic !== 'SC131SD0') {
       // Fallback: treat as raw flat image
+      this.emptyFillByte = 0x00;
       this.loadImage(bundleBytes);
       return;
     }
+    this.emptyFillByte = magic === 'SC131SD0' ? 0x00 : 0xE5;
     const sizeMB = view.getUint32(8, true);
     const count = view.getUint32(12, true);
     this.sectors.clear();
@@ -122,10 +125,10 @@ export class SDCard {
       const slice = this.baseImage.subarray(byteOffset, Math.min(byteOffset + 512, this.baseImage.byteLength));
       out.set(slice);
       if (slice.byteLength < 512) {
-        out.fill(0xE5, slice.byteLength);
+        out.fill(this.emptyFillByte, slice.byteLength);
       }
     } else {
-      out.fill(0xE5); // Standard CP/M formatted empty byte
+      out.fill(this.emptyFillByte);
     }
     return out;
   }

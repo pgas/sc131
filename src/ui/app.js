@@ -3,7 +3,8 @@
  * - Supports switching between:
  *   1) SC131 Z180 Pocket Computer (Port 0x0C SPI /CS, Port 0x0E Orange Status LED1)
  *   2) SC126 Z180 RC2014 Motherboard (Port 0x0D 8-LED Bar, Port 0x0C DS1302 RTC + I2C + SPI /CS1)
- * - Left Column: Prominent Terminal (80x25 CRT) + Debugger below the terminal
+ * - Supports RomWBW v3.6.0, Fuzix 0.4 Unix OS (rcbus-z180), and Small Computer Monitor S6
+ * - Left Column: Prominent Terminal (80x25 CRT with simple scrollback) + Debugger below the terminal
  * - Right Column: Always-visible Hardware Panels
  */
 
@@ -39,8 +40,11 @@ class SC131EmulatorApp {
     this.activeSerialTab = 0;
     this.txRxBlink = [0, 0];
     this.sdBlinkTimeout = null;
+    this.resetPulseTimer = null;
     this.romCache = {};
     this.sdBundleCache = null;
+    this.fuzixSdBundleCache = null;
+    this.activeSdKind = 'romwbw'; // 'romwbw' | 'fuzix' | 'custom'
 
     const params = new URLSearchParams(window.location.search);
     this.machineType = params.get('machine') === 'sc126' ? 'sc126' : 'sc131';
@@ -49,11 +53,10 @@ class SC131EmulatorApp {
     this.debuggerLive = false;
     this.disasmBaseAddr = null; // null = follow PC when refreshed
     this.syncingMemInput = false;
+    this.syncingTermScroll = false;
 
-    // Prompt-driven Quick Launch queue
+    // Prompt-driven Quick Launch queue (checked at end of each frame after runCycles)
     this.macroQueue = [];
-    this.macroSending = false;
-    this.macroTimer = null;
     this.serialWatchBuffer = '';
 
     // Initialize terminals
@@ -69,6 +72,9 @@ class SC131EmulatorApp {
         this.board.sendSerial(0, b);
         this.triggerSerialDot(0);
       },
+      onScrollChange: () => {
+        if (this.activeSerialTab === 0) this.syncTerminalScrollbar();
+      },
     });
 
     this.term1 = new SerialTerminal(canvas1, {
@@ -79,6 +85,9 @@ class SC131EmulatorApp {
       onInput: (b) => {
         this.board.sendSerial(1, b);
         this.triggerSerialDot(1);
+      },
+      onScrollChange: () => {
+        if (this.activeSerialTab === 1) this.syncTerminalScrollbar();
       },
     });
 
@@ -108,6 +117,7 @@ class SC131EmulatorApp {
     this.sc131 = this.board; // backwards-compatible alias
 
     this.bindUI();
+    this.setupTerminalScrollbar();
     this.syncMachineChrome();
     this.setupMemoryVirtualScroll();
     this.bootDefaultSystem();
@@ -117,15 +127,73 @@ class SC131EmulatorApp {
     if (boardKey !== this.machineType) return;
     if (ch === 0) {
       this.term0.writeByte(byte);
-      this.handleSerialWatchByte(byte);
+      if (this.macroQueue.length > 0) {
+        this.serialWatchBuffer += String.fromCharCode(byte & 0x7F);
+        if (this.serialWatchBuffer.length > 512) {
+          this.serialWatchBuffer = this.serialWatchBuffer.slice(-512);
+        }
+      }
     } else {
       this.term1.writeByte(byte);
     }
     this.triggerSerialDot(ch);
   }
 
+  checkMacroWatchBuffer() {
+    if (this.macroQueue.length === 0) return;
+    const nextStep = this.macroQueue[0];
+    if (this.serialWatchBuffer.includes(nextStep.waitFor)) {
+      this.macroQueue.shift();
+      this.serialWatchBuffer = '';
+      this.board.sendSerial(0, nextStep.send);
+      this.triggerSerialDot(0);
+    }
+  }
+
   getActiveTerminal() {
     return this.activeSerialTab === 0 ? this.term0 : this.term1;
+  }
+
+  setupTerminalScrollbar() {
+    const sb = document.getElementById('term-scrollbar');
+    if (!sb) return;
+    sb.addEventListener('scroll', () => {
+      if (this.syncingTermScroll) return;
+      const term = this.getActiveTerminal();
+      const sbLen = term.scrollback.length;
+      if (sbLen === 0) return;
+      const maxScrollTop = Math.max(1, sb.scrollHeight - sb.clientHeight);
+      const ratioFromBottom = 1 - Math.max(0, Math.min(1, sb.scrollTop / maxScrollTop));
+      const newOffset = Math.round(ratioFromBottom * sbLen);
+      this.syncingTermScroll = true;
+      term.setViewOffset(newOffset);
+      this.syncingTermScroll = false;
+    });
+    this.syncTerminalScrollbar();
+  }
+
+  syncTerminalScrollbar() {
+    if (this.syncingTermScroll) return;
+    const sb = document.getElementById('term-scrollbar');
+    const spacer = document.getElementById('term-scroll-spacer');
+    if (!sb || !spacer) return;
+    const term = this.getActiveTerminal();
+    const viewHeight = term.rows * term.charHeight + 16;
+    const totalRows = term.rows + term.scrollback.length;
+    const totalHeight = totalRows * term.charHeight + 16;
+
+    sb.style.height = `${viewHeight}px`;
+    spacer.style.height = `${totalHeight}px`;
+
+    this.syncingTermScroll = true;
+    const maxScrollTop = Math.max(0, totalHeight - viewHeight);
+    if (term.scrollback.length === 0 || term.viewOffset <= 0) {
+      sb.scrollTop = maxScrollTop;
+    } else {
+      const frac = 1 - term.viewOffset / term.scrollback.length;
+      sb.scrollTop = Math.round(frac * maxScrollTop);
+    }
+    this.syncingTermScroll = false;
   }
 
   triggerSerialDot(ch) {
@@ -279,11 +347,35 @@ class SC131EmulatorApp {
   }
 
   async ensureRomLoaded(machine = this.machineType, fwKey = 'romwbw') {
-    const cacheKey = fwKey === 'scm_s6' ? 'scm_s6' : `romwbw_${machine}`;
+    const actualFw = fwKey === 'scm_s6' ? 'scm_s6' : 'romwbw';
+    const cacheKey = actualFw === 'scm_s6' ? 'scm_s6' : `romwbw_${machine}`;
     if (!this.romCache[cacheKey]) {
-      this.romCache[cacheKey] = await this.fetchAssetBytes(this.getRomAssetPath(machine, fwKey));
+      this.romCache[cacheKey] = await this.fetchAssetBytes(this.getRomAssetPath(machine, actualFw));
     }
     this.boards[machine].loadRom(this.romCache[cacheKey]);
+  }
+
+  async ensureSdLoaded(kind = 'romwbw') {
+    const st = document.getElementById('sd-status-text');
+    if (kind === 'fuzix') {
+      if (!this.fuzixSdBundleCache) {
+        const raw = await this.fetchAssetBytes('./assets/fuzix_sdcard.simg');
+        this.fuzixSdBundleCache = await decompressIfGzip(raw);
+      }
+      this.board.sdcard.loadSparseBundle(this.fuzixSdBundleCache);
+      this.board.sdcard.present = true;
+      this.activeSdKind = 'fuzix';
+      if (st) st.textContent = 'SD0: 40 MB Fuzix 0.4 RootFS + Swap';
+    } else if (kind === 'romwbw') {
+      if (!this.sdBundleCache) {
+        const raw = await this.fetchAssetBytes('./assets/sc131_sdcard.simg');
+        this.sdBundleCache = await decompressIfGzip(raw);
+      }
+      this.board.sdcard.loadSparseBundle(this.sdBundleCache);
+      this.board.sdcard.present = true;
+      this.activeSdKind = 'romwbw';
+      if (st) st.textContent = 'SD0: 68 MB SDHC (8 Slices)';
+    }
   }
 
   async bootDefaultSystem() {
@@ -297,9 +389,10 @@ class SC131EmulatorApp {
 
       this.boards.sc131.sdcard.loadSparseBundle(this.sdBundleCache);
       this.boards.sc126.sdcard.loadSparseBundle(this.sdBundleCache);
+      this.activeSdKind = 'romwbw';
 
       this.board.loadRom(romBytes);
-      this.triggerHardwareResetPulse(220);
+      this.triggerHardwareResetPulse(180);
       this.running = true;
       this.startLoop();
       this.term0.canvas.focus();
@@ -320,18 +413,30 @@ class SC131EmulatorApp {
     this.syncMachineChrome();
 
     const fwKey = document.getElementById('firmware-select')?.value || 'romwbw';
-    await this.ensureRomLoaded(this.machineType, fwKey);
-    this.triggerHardwareResetPulse(220);
-    this.running = true;
-    this.updateRunPauseButton();
-    this.updateInspectorUI(true);
-    this.term0.canvas.focus();
+    if (fwKey === 'fuzix') {
+      await this.launchFuzix();
+    } else {
+      await this.ensureRomLoaded(this.machineType, fwKey);
+      if (fwKey === 'romwbw') await this.ensureSdLoaded('romwbw');
+      this.triggerHardwareResetPulse(180);
+      this.running = true;
+      this.updateRunPauseButton();
+      this.updateInspectorUI(true);
+      this.term0.canvas.focus();
+    }
   }
 
   async switchFirmware(fwKey) {
     try {
+      if (fwKey === 'fuzix') {
+        await this.launchFuzix();
+        return;
+      }
       await this.ensureRomLoaded(this.machineType, fwKey);
-      this.triggerHardwareResetPulse(250);
+      if (fwKey === 'romwbw' && this.activeSdKind === 'fuzix') {
+        await this.ensureSdLoaded('romwbw');
+      }
+      this.triggerHardwareResetPulse(200);
       this.running = true;
       this.updateRunPauseButton();
       this.term0.canvas.focus();
@@ -340,33 +445,39 @@ class SC131EmulatorApp {
     }
   }
 
+  async launchFuzix() {
+    this.clearMacroQueue();
+    const fwSel = document.getElementById('firmware-select');
+    if (fwSel) fwSel.value = 'fuzix';
+
+    await this.ensureRomLoaded(this.machineType, 'romwbw');
+    await this.ensureSdLoaded('fuzix');
+
+    const is126 = this.machineType === 'sc126';
+    const steps = is126
+      ? [
+          { waitFor: 'Boot [H=Help]: ', send: '4\r' },
+          { waitFor: 'bootdev: ', send: 'hda1\r' },
+        ]
+      : [
+          { waitFor: 'Boot [H=Help]: ', send: '2\r' },
+          { waitFor: 'bootdev: ', send: 'hda1\r' },
+          { waitFor: 'Enter new date: ', send: '\r' },
+        ];
+
+    this.resetAndStartMacroSteps(steps);
+  }
+
   clearMacroQueue() {
     this.macroQueue = [];
-    this.macroSending = false;
     this.serialWatchBuffer = '';
-    if (this.macroTimer) {
-      clearTimeout(this.macroTimer);
-      this.macroTimer = null;
+    if (this.resetPulseTimer) {
+      clearTimeout(this.resetPulseTimer);
+      this.resetPulseTimer = null;
     }
   }
 
-  handleSerialWatchByte(byte) {
-    if (this.macroQueue.length === 0 || this.macroSending) return;
-    const ch = String.fromCharCode(byte & 0x7F);
-    this.serialWatchBuffer += ch;
-    if (this.serialWatchBuffer.length > 256) {
-      this.serialWatchBuffer = this.serialWatchBuffer.slice(-256);
-    }
-
-    const nextStep = this.macroQueue[0];
-    if (this.serialWatchBuffer.includes(nextStep.waitFor)) {
-      this.macroQueue.shift();
-      this.serialWatchBuffer = '';
-      this.sendMacroString(nextStep.send, nextStep.delayMs || 12);
-    }
-  }
-
-  triggerHardwareResetPulse(durationMs = 280) {
+  triggerHardwareResetPulse(durationMs = 220) {
     this.clearMacroQueue();
     this.term0.reset();
     this.term1.reset();
@@ -377,7 +488,8 @@ class SC131EmulatorApp {
     this.board.notifyLeds();
     this.updateStatusPill();
 
-    setTimeout(() => {
+    this.resetPulseTimer = setTimeout(() => {
+      this.resetPulseTimer = null;
       this.board.resetPulseRemainingMs = 0;
       this.board.notifyLeds();
       this.updateStatusPill();
@@ -385,40 +497,8 @@ class SC131EmulatorApp {
     }, durationMs);
   }
 
-  sendMacroString(str, delayMs = 15) {
-    this.running = true;
-    this.macroSending = true;
-    this.updateRunPauseButton();
-    let idx = 0;
-    const stepChar = () => {
-      if (idx >= str.length) {
-        this.macroSending = false;
-        this.macroTimer = null;
-        return;
-      }
-      this.board.sendSerial(this.activeSerialTab, str.charCodeAt(idx) & 0xFF);
-      this.triggerSerialDot(this.activeSerialTab);
-      idx++;
-      if (idx < str.length) {
-        this.macroTimer = setTimeout(stepChar, delayMs);
-      } else {
-        this.macroSending = false;
-        this.macroTimer = null;
-      }
-    };
-    stepChar();
-    this.getActiveTerminal().canvas.focus();
-  }
-
-  /**
-   * Reset the terminal and active board back to RomWBW Boot Loader and execute prompt-sequenced steps
-   */
-  async runQuickLaunch(steps) {
+  resetAndStartMacroSteps(steps) {
     this.clearMacroQueue();
-    await this.ensureRomLoaded(this.machineType, 'romwbw');
-    const fwSel = document.getElementById('firmware-select');
-    if (fwSel) fwSel.value = 'romwbw';
-
     this.activeSerialTab = 0;
     this.term0.reset();
     this.term1.reset();
@@ -432,6 +512,21 @@ class SC131EmulatorApp {
     this.updateStatusPill();
     this.macroQueue = steps;
     this.getActiveTerminal().canvas.focus();
+  }
+
+  /**
+   * Reset the terminal and active board back to RomWBW Boot Loader and execute prompt-sequenced steps
+   */
+  async runQuickLaunch(steps) {
+    this.clearMacroQueue();
+    await this.ensureRomLoaded(this.machineType, 'romwbw');
+    if (this.activeSdKind === 'fuzix') {
+      await this.ensureSdLoaded('romwbw');
+    }
+    const fwSel = document.getElementById('firmware-select');
+    if (fwSel) fwSel.value = 'romwbw';
+
+    this.resetAndStartMacroSteps(steps);
   }
 
   runLedBlinkDemo() {
@@ -450,8 +545,9 @@ class SC131EmulatorApp {
       ].join('\r');
 
       this.runQuickLaunch([
-        { waitFor: 'Boot [H=Help]:', send: 'B\r\r', delayMs: 15 },
-        { waitFor: 'Ok', send: prog126, delayMs: 8 },
+        { waitFor: 'Boot [H=Help]: ', send: 'B\r' },
+        { waitFor: 'Memory top?', send: '\r' },
+        { waitFor: 'Ok', send: prog126 },
       ]);
       return;
     }
@@ -470,8 +566,9 @@ class SC131EmulatorApp {
     ].join('\r');
 
     this.runQuickLaunch([
-      { waitFor: 'Boot [H=Help]:', send: 'B\r\r', delayMs: 15 },
-      { waitFor: 'Ok', send: prog131, delayMs: 8 },
+      { waitFor: 'Boot [H=Help]: ', send: 'B\r' },
+      { waitFor: 'Memory top?', send: '\r' },
+      { waitFor: 'Ok', send: prog131 },
     ]);
   }
 
@@ -540,7 +637,7 @@ class SC131EmulatorApp {
 
     // Reset buttons (topbar + SW1 on SC131 + SW2 on SC126)
     const doReset = () => {
-      this.triggerHardwareResetPulse(320);
+      this.triggerHardwareResetPulse(250);
       this.term0.canvas.focus();
     };
     document.getElementById('btn-reset')?.addEventListener('click', doReset);
@@ -578,7 +675,7 @@ class SC131EmulatorApp {
       if (vccVal) vccVal.textContent = v.toFixed(2) + 'V';
       const nowReset = this.board.isHeldInReset();
       if (wasReset && !nowReset) {
-        this.triggerHardwareResetPulse(250);
+        this.triggerHardwareResetPulse(220);
       } else {
         this.board.notifyLeds();
         this.updateStatusPill();
@@ -598,7 +695,7 @@ class SC131EmulatorApp {
         this.board.loadRom(bytes);
       }
       this.term0.reset();
-      this.triggerHardwareResetPulse(250);
+      this.triggerHardwareResetPulse(220);
     };
     document.getElementById('rom-file-input')?.addEventListener('change', handleRomUpload);
     document.getElementById('rom-file-input-sc126')?.addEventListener('change', handleRomUpload);
@@ -611,6 +708,7 @@ class SC131EmulatorApp {
       const raw = await decompressIfGzip(new Uint8Array(ab));
       this.board.sdcard.loadSparseBundle(raw);
       this.board.sdcard.present = true;
+      this.activeSdKind = 'custom';
       const st = document.getElementById('sd-status-text');
       if (st) st.textContent = `SD0: ${file.name} (${this.board.sdcard.sizeMB} MB)`;
     });
@@ -643,23 +741,39 @@ class SC131EmulatorApp {
     // Quick-launch macros (always reset terminal & active board and boot cleanly to target)
     document.querySelectorAll('[data-macro]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const macro = btn.getAttribute('data-macro');
-        if (!macro) return;
-        if (macro.startsWith('2.4')) {
+        const rawMacro = btn.getAttribute('data-macro');
+        if (!rawMacro) return;
+
+        // On SC126, SD0 is Disk 4 (4.0..4.5), whereas on SC131 SD0 is Disk 2 (2.0..2.5)
+        const is126 = this.machineType === 'sc126';
+        const macro = (is126 && rawMacro.startsWith('2.'))
+          ? '4.' + rawMacro.slice(2)
+          : rawMacro;
+
+        if (rawMacro.startsWith('2.4')) {
           const wsChk = document.getElementById('chk-wordstar');
           if (wsChk) wsChk.checked = true;
           this.term0.wordstarArrows = true;
           this.term1.wordstarArrows = true;
           this.runQuickLaunch([
-            { waitFor: 'Boot [H=Help]:', send: '2.4\r', delayMs: 12 },
-            { waitFor: 'A>', send: 'WS\r', delayMs: 12 },
+            { waitFor: 'Boot [H=Help]: ', send: macro },
+            { waitFor: 'A>', send: 'WS\r' },
+          ]);
+        } else if (rawMacro.startsWith('B')) {
+          this.runQuickLaunch([
+            { waitFor: 'Boot [H=Help]: ', send: 'B\r' },
+            { waitFor: 'Memory top?', send: '\r' },
           ]);
         } else {
           this.runQuickLaunch([
-            { waitFor: 'Boot [H=Help]:', send: macro, delayMs: 12 },
+            { waitFor: 'Boot [H=Help]: ', send: macro },
           ]);
         }
       });
+    });
+
+    document.getElementById('btn-fuzix-launch')?.addEventListener('click', () => {
+      this.launchFuzix();
     });
 
     document.getElementById('btn-led-demo')?.addEventListener('click', () => {
@@ -677,6 +791,7 @@ class SC131EmulatorApp {
       this.term1.canvas.classList.add('hidden');
       this.term0.dirty = true;
       this.term0.render();
+      this.syncTerminalScrollbar();
       this.term0.canvas.focus();
     });
 
@@ -688,6 +803,7 @@ class SC131EmulatorApp {
       this.term0.canvas.classList.add('hidden');
       this.term1.dirty = true;
       this.term1.render();
+      this.syncTerminalScrollbar();
       this.term1.canvas.focus();
     });
 
@@ -696,6 +812,7 @@ class SC131EmulatorApp {
       const preset = e.target.value;
       this.term0.setSizePreset(preset);
       this.term1.setSizePreset(preset);
+      this.syncTerminalScrollbar();
       this.getActiveTerminal().canvas.focus();
     });
 
@@ -722,11 +839,12 @@ class SC131EmulatorApp {
     document.getElementById('btn-paste')?.addEventListener('click', async () => {
       try {
         const text = await navigator.clipboard.readText();
-        if (text) this.sendMacroString(text.replace(/\r?\n/g, '\r'), 6);
+        if (text) this.board.sendSerial(this.activeSerialTab, text.replace(/\r?\n/g, '\r'));
       } catch {
         const text = window.prompt('Paste text to send to serial port:');
-        if (text) this.sendMacroString(text.replace(/\r?\n/g, '\r'), 6);
+        if (text) this.board.sendSerial(this.activeSerialTab, text.replace(/\r?\n/g, '\r'));
       }
+      this.getActiveTerminal().canvas.focus();
     });
 
     document.getElementById('btn-copy-screen')?.addEventListener('click', () => {
@@ -937,6 +1055,7 @@ class SC131EmulatorApp {
         const effectiveMult = this.macroQueue.length > 0 ? Math.max(this.speedMultiplier, 4.0) : this.speedMultiplier;
         const targetCycles = Math.round((phiHz * effectiveMult * dtMs) / 1000);
         const { breakpointHit } = this.board.runCycles(targetCycles);
+        this.checkMacroWatchBuffer();
         if (breakpointHit) {
           this.running = false;
           this.disasmBaseAddr = null;

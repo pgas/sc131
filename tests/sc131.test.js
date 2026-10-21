@@ -19,6 +19,8 @@ const romwbw126Bytes = new Uint8Array(fs.readFileSync(path.join(assetsDir, 'romw
 const scmBytes = new Uint8Array(fs.readFileSync(path.join(assetsDir, 'scm_s6.rom')));
 const sdCompressed = fs.readFileSync(path.join(assetsDir, 'sc131_sdcard.simg'));
 const sdBundleBytes = new Uint8Array(zlib.gunzipSync(sdCompressed));
+const fuzixCompressed = fs.readFileSync(path.join(assetsDir, 'fuzix_sdcard.simg'));
+const fuzixBundleBytes = new Uint8Array(zlib.gunzipSync(fuzixCompressed));
 
 describe('SC131 Z180 Pocket Computer Emulator', () => {
   test('Z180 extended instructions (MLT, IN0, OUT0, TST, OTIMR) and MMU translation', () => {
@@ -292,5 +294,49 @@ describe('SC126 Z180 RC2014 Motherboard Emulator', () => {
     sc126.runCycles(8_000_000);
     assert.match(consoleOut, /Diagnostic LEDs\s+@ 0D\s+detected/);
   });
+
+  test('Boots Fuzix 0.4 Unix OS (fuzix_sdcard.simg) on SC126 to root shell and executes uname -a', () => {
+    let consoleOut = '';
+    const sc126 = new SC126({
+      onSerialTx: (ch, b) => {
+        if (ch === 0) consoleOut += String.fromCharCode(b & 0x7F);
+      },
+    });
+    sc126.loadRom(romwbw126Bytes);
+    sc126.sdcard.loadSparseBundle(fuzixBundleBytes);
+    sc126.reset();
+
+    sc126.runCycles(35_000_000);
+    assert.match(consoleOut, /Boot \[H=Help\]: /);
+
+    consoleOut = '';
+    sc126.sendSerial(0, '4\r');
+    for (let i = 0; i < 40; i++) {
+      sc126.runCycles(5_000_000);
+      if (consoleOut.includes('bootdev: ')) break;
+    }
+    assert.match(consoleOut, /FUZIX version 0\.4/);
+    assert.match(consoleOut, /DS1302 detected at 0x0C\./);
+    assert.match(consoleOut, /bootdev: /);
+
+    sc126.sendSerial(0, 'hda1\r');
+    for (let i = 0; i < 20; i++) {
+      sc126.runCycles(5_000_000);
+      if (consoleOut.includes('login: ')) break;
+    }
+    assert.match(consoleOut, /Checking root file system\./);
+    assert.match(consoleOut, /Welcome to Fuzix/);
+    assert.match(consoleOut, /login: /);
+
+    sc126.sendSerial(0, 'root\r');
+    for (let i = 0; i < 20; i++) {
+      sc126.runCycles(5_000_000);
+      if (consoleOut.includes('# ')) break;
+    }
+    sc126.sendSerial(0, 'uname -a\r');
+    sc126.runCycles(15_000_000);
+    assert.match(consoleOut, /Fuzix 0\.4\s+rcbus-z180/);
+  });
 });
+
 

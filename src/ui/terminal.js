@@ -77,8 +77,10 @@ export class SerialTerminal {
     this.rows = options.rows || 25;
     this.themeName = options.theme || 'amber';
     this.onInput = options.onInput || null;
+    this.onScrollChange = options.onScrollChange || null;
     this.wordstarArrows = false; // If true, map arrow keys to ^E/^X/^S/^D
     this.crtScanlines = true;
+    this.maxScrollback = 400;
 
     this.charWidth = 11;
     this.charHeight = 22;
@@ -133,6 +135,8 @@ export class SerialTerminal {
     for (let r = 0; r < this.rows; r++) {
       this.grid[r] = this.makeEmptyRow();
     }
+    this.scrollback = [];
+    this.viewOffset = 0;
 
     this.cursorRow = 0;
     this.cursorCol = 0;
@@ -155,6 +159,7 @@ export class SerialTerminal {
     this.eqRow = 0;
 
     this.dirty = true;
+    if (this.onScrollChange) this.onScrollChange();
   }
 
   setTheme(name) {
@@ -195,6 +200,12 @@ export class SerialTerminal {
     });
 
     this.canvas.addEventListener('keydown', (e) => this.handleKeyDown(e));
+    this.canvas.addEventListener('wheel', (e) => {
+      if (this.scrollback.length === 0) return;
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -3 : 3;
+      this.setViewOffset(this.viewOffset + delta);
+    }, { passive: false });
     this.canvas.addEventListener('paste', (e) => {
       e.preventDefault();
       const text = (e.clipboardData || window.clipboardData).getData('text');
@@ -235,7 +246,9 @@ export class SerialTerminal {
       if (e.metaKey) return;
     }
 
-    this.scrollOffset = 0;
+    if (this.viewOffset !== 0) {
+      this.setViewOffset(0);
+    }
 
     if (e.ctrlKey && !e.altKey && !e.metaKey) {
       const k = e.key.toUpperCase();
@@ -312,13 +325,33 @@ export class SerialTerminal {
     }
   }
 
+  setViewOffset(offset) {
+    const clamped = Math.max(0, Math.min(this.scrollback.length, offset | 0));
+    if (this.viewOffset !== clamped) {
+      this.viewOffset = clamped;
+      this.dirty = true;
+      this.render();
+      if (this.onScrollChange) this.onScrollChange();
+    }
+  }
+
   scrollUp(lines = 1) {
     for (let i = 0; i < lines; i++) {
+      if (this.scrollTop === 0 && this.scrollBottom === this.rows - 1) {
+        this.scrollback.push(this.grid[0]);
+        if (this.scrollback.length > this.maxScrollback) {
+          this.scrollback.shift();
+        }
+        if (this.viewOffset > 0) {
+          this.viewOffset = Math.min(this.scrollback.length, this.viewOffset + 1);
+        }
+      }
       for (let r = this.scrollTop; r < this.scrollBottom; r++) {
         this.grid[r] = this.grid[r + 1];
       }
       this.grid[this.scrollBottom] = this.makeEmptyRow();
     }
+    if (this.onScrollChange) this.onScrollChange();
   }
 
   scrollDown(lines = 1) {
@@ -706,8 +739,12 @@ export class SerialTerminal {
     ctx.font = `${this.fontSize || 16}px "JetBrains Mono", "Fira Code", "Cascadia Mono", "Courier New", monospace`;
     ctx.textBaseline = 'top';
 
+    const sbLen = this.scrollback.length;
+    const startIdx = Math.max(0, sbLen - this.viewOffset);
+
     for (let r = 0; r < this.rows; r++) {
-      const row = this.grid[r];
+      const idx = startIdx + r;
+      const row = idx < sbLen ? this.scrollback[idx] : this.grid[idx - sbLen];
       if (!row) continue;
 
       const y = pad + r * this.charHeight;
@@ -750,8 +787,8 @@ export class SerialTerminal {
       }
     }
 
-    // Draw cursor
-    if (this.cursorVisible) {
+    // Draw cursor (only when viewing live screen)
+    if (this.cursorVisible && this.viewOffset === 0) {
       const cx = pad + Math.min(this.cols - 1, this.cursorCol) * this.charWidth;
       const cy = pad + this.cursorRow * this.charHeight;
       ctx.fillStyle = theme.cursor;
