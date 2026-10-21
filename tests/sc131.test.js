@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { SC131 } from '../src/emulator/sc131.js';
 import { Z180_REG } from '../src/emulator/z180.js';
 import { disassembleOne } from '../src/emulator/disasm.js';
+import { SerialTerminal } from '../src/ui/terminal.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const assetsDir = path.resolve(__dirname, '../assets');
@@ -181,5 +182,46 @@ describe('SC131 Z180 Pocket Computer Emulator', () => {
     sc.sendSerial(0, 'DEVICES\r');
     sc.runCycles(10_000_000);
     assert.match(consoleOut, /Z180 ASCI\s+@ C0/);
+  });
+
+  test('Boots WordStar 4.0 from SD0.4 (Slice 4) and renders Opening Menu and CHAPTER1.DOC in SerialTerminal', () => {
+    const fakeCanvas = {
+      getContext: () => ({
+        setTransform() {},
+        fillRect() {},
+        fillText() {},
+        strokeRect() {},
+      }),
+      addEventListener() {},
+      style: {},
+    };
+    const term = new SerialTerminal(fakeCanvas);
+    const sc = new SC131({
+      onSerialTx: (ch, b) => {
+        if (ch === 0) term.writeByte(b);
+      },
+    });
+    sc.loadRom(romwbwBytes);
+    sc.sdcard.loadSparseBundle(sdBundleBytes);
+    sc.reset();
+
+    sc.runCycles(50_000_000);
+    sc.sendSerial(0, '2.4\r');
+    sc.runCycles(40_000_000);
+    sc.sendSerial(0, 'WS\r');
+    sc.runCycles(120_000_000);
+
+    const menuScreen = term.getScreenText();
+    assert.match(menuScreen, /WordStar, CP\/M Edition, Release 4/);
+    assert.match(menuScreen, /O P E N I N G   M E N U/);
+    assert.match(menuScreen, /CHAPTER1\.DOC/);
+    assert.equal(term.cursorRow, 0);
+    assert.equal(term.cursorCol, 0);
+
+    sc.sendSerial(0, 'DCHAPTER1.DOC\r');
+    sc.runCycles(120_000_000);
+    const editScreen = term.getScreenText();
+    assert.match(editScreen, /E D I T   M E N U/);
+    assert.match(editScreen, /This is chapter 1\./);
   });
 });

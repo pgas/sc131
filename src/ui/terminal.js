@@ -19,42 +19,42 @@ const CP437_HIGH = [
 const THEMES = {
   amber: {
     bg: '#100c05',
-    fg: '#ffb000',
-    bold: '#ffd466',
-    dim: '#996800',
-    cursor: '#ffb000',
+    fg: '#ECA400',
+    bold: '#FFD666',
+    dim: '#9E6B00',
+    cursor: '#FFB000',
     scanline: 'rgba(0, 0, 0, 0.22)',
     palette: [
-      '#100c05', '#d75f00', '#ffb000', '#ff8700',
-      '#af8700', '#d78700', '#ffaf00', '#e6a100',
-      '#664800', '#ff6f00', '#ffc833', '#ffd75f',
-      '#dfaf00', '#ffaf5f', '#ffe082', '#fff3cc',
+      '#100c05', '#C87A00', '#ECA400', '#F5B82E',
+      '#B87300', '#D48800', '#F0A800', '#ECA400',
+      '#6E4700', '#FF9E1B', '#FFC43D', '#FFD666',
+      '#E09600', '#FFB833', '#FFCC5C', '#FFD666',
     ],
   },
   green: {
     bg: '#061109',
-    fg: '#33ff66',
-    bold: '#88ffaa',
-    dim: '#198c36',
-    cursor: '#33ff66',
+    fg: '#2CE65C',
+    bold: '#8AFFA8',
+    dim: '#168A35',
+    cursor: '#33FF66',
     scanline: 'rgba(0, 0, 0, 0.22)',
     palette: [
-      '#061109', '#ff5555', '#33ff66', '#f1fa8c',
-      '#44aaff', '#ff79c6', '#50fa7b', '#d0f5dc',
-      '#1e592d', '#ff6e6e', '#69ff94', '#ffffa5',
-      '#8be9fd', '#ff92df', '#a4ffff', '#ffffff',
+      '#061109', '#1FB848', '#2CE65C', '#52F27C',
+      '#199E3D', '#24CC50', '#38EB67', '#2CE65C',
+      '#125E26', '#47F072', '#66F78B', '#8AFFA8',
+      '#2CE65C', '#52F27C', '#75FA98', '#8AFFA8',
     ],
   },
   modern: {
     bg: '#0c1017',
-    fg: '#e2e8f0',
+    fg: '#cbd5e1',
     bold: '#ffffff',
     dim: '#64748b',
     cursor: '#38bdf8',
     scanline: 'rgba(0, 0, 0, 0.08)',
     palette: [
       '#0c1017', '#ef4444', '#22c55e', '#eab308',
-      '#3b82f6', '#a855f7', '#06b6d4', '#e2e8f0',
+      '#3b82f6', '#a855f7', '#06b6d4', '#cbd5e1',
       '#475569', '#f87171', '#4ade80', '#facc15',
       '#60a5fa', '#c084fc', '#22d3ee', '#ffffff',
     ],
@@ -368,12 +368,43 @@ export class SerialTerminal {
         this.csiBuffer = '';
         return;
       }
-      if (ch === '=' || ch === 'Y') {
-        // ADM-3A / Kaypro / VT52 direct cursor addressing: ESC = row col
+      if (ch === '=') {
+        // ADM-3A / Televideo / Kaypro direct cursor addressing: ESC = <row+32> <col+32>
         this.escState = 'ESC_EQ_ROW';
         return;
       }
-      if (ch === '7') {
+      if (ch === '(') {
+        // Televideo / WordStar Highlight ON (Full Intensity)
+        this.attrBold = true;
+      } else if (ch === ')') {
+        // Televideo / WordStar Highlight OFF (Half/Normal Intensity)
+        this.attrBold = false;
+      } else if (ch === 'T' || ch === 'K') {
+        // Televideo / Kaypro Clear to End of Line
+        this.clearLine(0);
+      } else if (ch === 'Y' || ch === 'J') {
+        // Televideo / Kaypro Clear to End of Screen
+        this.clearScreen(0);
+      } else if (ch === 'E') {
+        // Televideo / Kaypro Insert Blank Line at cursor
+        for (let r = this.scrollBottom; r > this.cursorRow; r--) {
+          this.grid[r] = this.grid[r - 1];
+        }
+        this.grid[this.cursorRow] = this.makeEmptyRow();
+        this.cursorCol = 0;
+      } else if (ch === 'R') {
+        // Televideo / Kaypro Delete Line at cursor
+        for (let r = this.cursorRow; r < this.scrollBottom; r++) {
+          this.grid[r] = this.grid[r + 1];
+        }
+        this.grid[this.scrollBottom] = this.makeEmptyRow();
+        this.cursorCol = 0;
+      } else if (ch === '*') {
+        // Televideo Clear Screen & Home Cursor
+        this.clearScreen(2);
+        this.cursorRow = 0;
+        this.cursorCol = 0;
+      } else if (ch === '7') {
         this.savedRow = this.cursorRow;
         this.savedCol = this.cursorCol;
       } else if (ch === '8') {
@@ -395,10 +426,6 @@ export class SerialTerminal {
       } else if (ch === 'H') {
         this.cursorRow = 0;
         this.cursorCol = 0;
-      } else if (ch === 'J') {
-        this.clearScreen(0);
-      } else if (ch === 'K') {
-        this.clearLine(0);
       }
       this.escState = 'NORMAL';
       this.dirty = true;
@@ -688,12 +715,17 @@ export class SerialTerminal {
         const cell = row[c];
         const x = pad + c * this.charWidth;
 
-        let fgIdx = cell.fg;
-        let bgIdx = cell.bg;
-        if (cell.bold && fgIdx < 8) fgIdx += 8;
+        const fgIdx = cell.fg;
+        const bgIdx = cell.bg;
 
-        let fgColor = fgIdx === 7 ? (cell.bold ? theme.bold : cell.dim ? theme.dim : theme.fg) : theme.palette[fgIdx];
-        let bgColor = bgIdx === 0 ? theme.bg : theme.palette[bgIdx];
+        let fgColor;
+        if (fgIdx === 7) {
+          fgColor = cell.bold ? theme.bold : cell.dim ? theme.dim : theme.fg;
+        } else {
+          const palIdx = (cell.bold && fgIdx < 8) ? fgIdx + 8 : fgIdx;
+          fgColor = theme.palette[palIdx] || theme.fg;
+        }
+        let bgColor = bgIdx === 0 ? theme.bg : (theme.palette[bgIdx] || theme.bg);
 
         if (cell.inverse) {
           const tmp = fgColor;

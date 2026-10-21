@@ -41,6 +41,12 @@ class SC131EmulatorApp {
     this.disasmBaseAddr = null; // null = follow PC when refreshed
     this.syncingMemInput = false;
 
+    // Prompt-driven Quick Launch queue
+    this.macroQueue = [];
+    this.macroSending = false;
+    this.macroTimer = null;
+    this.serialWatchBuffer = '';
+
     // Initialize terminals
     const canvas0 = document.getElementById('term-canvas-0');
     const canvas1 = document.getElementById('term-canvas-1');
@@ -70,8 +76,12 @@ class SC131EmulatorApp {
     // Initialize SC131 hardware
     this.sc131 = new SC131({
       onSerialTx: (ch, byte) => {
-        if (ch === 0) this.term0.writeByte(byte);
-        else this.term1.writeByte(byte);
+        if (ch === 0) {
+          this.term0.writeByte(byte);
+          this.handleSerialWatchByte(byte);
+        } else {
+          this.term1.writeByte(byte);
+        }
         this.triggerSerialDot(ch);
       },
       onLedChange: (leds) => this.updateLedsUI(leds),
@@ -184,7 +194,38 @@ class SC131EmulatorApp {
     }
   }
 
+  clearMacroQueue() {
+    this.macroQueue = [];
+    this.macroSending = false;
+    this.serialWatchBuffer = '';
+    if (this.macroTimer) {
+      clearTimeout(this.macroTimer);
+      this.macroTimer = null;
+    }
+  }
+
+  handleSerialWatchByte(byte) {
+    if (this.macroQueue.length === 0 || this.macroSending) return;
+    const ch = String.fromCharCode(byte & 0x7F);
+    this.serialWatchBuffer += ch;
+    if (this.serialWatchBuffer.length > 256) {
+      this.serialWatchBuffer = this.serialWatchBuffer.slice(-256);
+    }
+
+    const nextStep = this.macroQueue[0];
+    if (this.serialWatchBuffer.includes(nextStep.waitFor)) {
+      this.macroQueue.shift();
+      this.serialWatchBuffer = '';
+      this.sendMacroString(nextStep.send, nextStep.delayMs || 12);
+    }
+  }
+
   triggerHardwareResetPulse(durationMs = 280) {
+    this.clearMacroQueue();
+    this.term0.reset();
+    this.term1.reset();
+    this.term0.render();
+    this.term1.render();
     this.sc131.reset();
     this.sc131.resetPulseRemainingMs = durationMs;
     this.sc131.notifyLeds();
@@ -198,18 +239,53 @@ class SC131EmulatorApp {
     }, durationMs);
   }
 
-  sendMacroString(str, delayMs = 18) {
+  sendMacroString(str, delayMs = 15) {
     this.running = true;
+    this.macroSending = true;
     this.updateRunPauseButton();
     let idx = 0;
     const stepChar = () => {
-      if (idx >= str.length) return;
+      if (idx >= str.length) {
+        this.macroSending = false;
+        this.macroTimer = null;
+        return;
+      }
       this.sc131.sendSerial(this.activeSerialTab, str.charCodeAt(idx) & 0xFF);
       this.triggerSerialDot(this.activeSerialTab);
       idx++;
-      if (idx < str.length) setTimeout(stepChar, delayMs);
+      if (idx < str.length) {
+        this.macroTimer = setTimeout(stepChar, delayMs);
+      } else {
+        this.macroSending = false;
+        this.macroTimer = null;
+      }
     };
     stepChar();
+    this.getActiveTerminal().canvas.focus();
+  }
+
+  /**
+   * Reset the terminal and SC131 back to RomWBW Boot Loader and execute prompt-sequenced steps
+   */
+  runQuickLaunch(steps) {
+    this.clearMacroQueue();
+    if (this.romCache.romwbw) {
+      this.sc131.loadRom(this.romCache.romwbw);
+      const fwSel = document.getElementById('firmware-select');
+      if (fwSel) fwSel.value = 'romwbw';
+    }
+    this.activeSerialTab = 0;
+    this.term0.reset();
+    this.term1.reset();
+    this.term0.render();
+    this.term1.render();
+    this.sc131.reset();
+    this.sc131.resetPulseRemainingMs = 0;
+    this.sc131.notifyLeds();
+    this.running = true;
+    this.updateRunPauseButton();
+    this.updateStatusPill();
+    this.macroQueue = steps;
     this.getActiveTerminal().canvas.focus();
   }
 
@@ -226,7 +302,11 @@ class SC131EmulatorApp {
       'RUN',
       '',
     ].join('\r');
-    this.sendMacroString(prog, 10);
+
+    this.runQuickLaunch([
+      { waitFor: 'Boot [H=Help]:', send: 'B\r\r', delayMs: 15 },
+      { waitFor: 'Ok', send: prog, delayMs: 8 },
+    ]);
   }
 
   bindUI() {
@@ -378,11 +458,26 @@ class SC131EmulatorApp {
       }
     });
 
-    // Quick-launch macros
+    // Quick-launch macros (always reset terminal & SC131 and boot cleanly to target)
     document.querySelectorAll('[data-macro]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const macro = btn.getAttribute('data-macro');
-        if (macro) this.sendMacroString(macro);
+        if (!macro) return;
+        if (macro.startsWith('2.4')) {
+          // WordStar slice: enable WordStar arrow keys and launch WS automatically at A>
+          const wsChk = document.getElementById('chk-wordstar');
+          if (wsChk) wsChk.checked = true;
+          this.term0.wordstarArrows = true;
+          this.term1.wordstarArrows = true;
+          this.runQuickLaunch([
+            { waitFor: 'Boot [H=Help]:', send: '2.4\r', delayMs: 12 },
+            { waitFor: 'A>', send: 'WS\r', delayMs: 12 },
+          ]);
+        } else {
+          this.runQuickLaunch([
+            { waitFor: 'Boot [H=Help]:', send: macro, delayMs: 12 },
+          ]);
+        }
       });
     });
 
@@ -658,7 +753,8 @@ class SC131EmulatorApp {
 
       if (this.running && !this.sc131.isHeldInReset()) {
         const phiHz = this.sc131.cpu.getPhiHz();
-        const targetCycles = Math.round((phiHz * this.speedMultiplier * dtMs) / 1000);
+        const effectiveMult = this.macroQueue.length > 0 ? Math.max(this.speedMultiplier, 4.0) : this.speedMultiplier;
+        const targetCycles = Math.round((phiHz * effectiveMult * dtMs) / 1000);
         const { breakpointHit } = this.sc131.runCycles(targetCycles);
         if (breakpointHit) {
           this.running = false;
