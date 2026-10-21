@@ -33,6 +33,9 @@ jobs:
         run: npm run build
 
       - name: Publish dist/ to gh-pages branch
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd dist
           touch .nojekyll
@@ -46,13 +49,9 @@ jobs:
 
       - name: Setup GitHub Pages
         id: pages
-        continue-on-error: true
         uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - name: Upload GitHub Pages artifact
-        if: steps.pages.outcome == 'success'
         uses: actions/upload-pages-artifact@v3
         with:
           path: "./dist"
@@ -63,7 +62,6 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     needs: build
-    continue-on-error: true
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
