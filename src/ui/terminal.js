@@ -77,6 +77,7 @@ export class SerialTerminal {
     this.rows = options.rows || 25;
     this.themeName = options.theme || 'amber';
     this.onInput = options.onInput || null;
+    this.onScrollChange = options.onScrollChange || null;
     this.wordstarArrows = false; // If true, map arrow keys to ^E/^X/^S/^D
     this.crtScanlines = true;
 
@@ -158,6 +159,23 @@ export class SerialTerminal {
     this.eqRow = 0;
 
     this.dirty = true;
+    this.notifyScroll();
+  }
+
+  notifyScroll() {
+    if (this.onScrollChange) {
+      this.onScrollChange(this.scrollOffset, this.scrollback.length, this.rows, this.charHeight);
+    }
+  }
+
+  setScrollOffset(offset) {
+    const clamped = Math.max(0, Math.min(this.scrollback.length, Math.round(offset)));
+    if (clamped !== this.scrollOffset) {
+      this.scrollOffset = clamped;
+      this.dirty = true;
+      this.render();
+      this.notifyScroll();
+    }
   }
 
   setTheme(name) {
@@ -179,6 +197,7 @@ export class SerialTerminal {
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.dirty = true;
     this.render();
+    this.notifyScroll();
   }
 
   setupEvents() {
@@ -196,13 +215,6 @@ export class SerialTerminal {
     this.canvas.addEventListener('mousedown', () => {
       this.canvas.focus();
     });
-    this.canvas.addEventListener('wheel', (e) => {
-      e.preventDefault();
-      const delta = e.deltaY < 0 ? 3 : -3;
-      this.scrollOffset = Math.max(0, Math.min(this.scrollback.length, this.scrollOffset + delta));
-      this.dirty = true;
-      this.render();
-    }, { passive: false });
 
     this.canvas.addEventListener('keydown', (e) => this.handleKeyDown(e));
     this.canvas.addEventListener('paste', (e) => {
@@ -336,6 +348,7 @@ export class SerialTerminal {
       }
       this.grid[this.scrollBottom] = this.makeEmptyRow();
     }
+    this.notifyScroll();
   }
 
   scrollDown(lines = 1) {

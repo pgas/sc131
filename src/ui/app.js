@@ -1,7 +1,7 @@
 /**
  * Main Browser Application for SC131 Z180 Pocket Computer Emulator
- * Wires SC131 hardware emulation, dual ASCI serial terminals, MicroSDHC manager,
- * interactive front panel / PCB jumpers, flexible panel manager, and on-demand Z8S180 debugger.
+ * - Left Column: Prominent Terminal (scrollbar-only scrollback) + Debugger below the terminal
+ * - Right Column: Always-visible SC131 Hardware Panels (Enclosure, SDHC, Serial/Supervisor, PCB & Jumpers)
  */
 
 import { SC131 } from '../emulator/sc131.js';
@@ -12,6 +12,8 @@ const hex2 = (v) => (v & 0xFF).toString(16).toUpperCase().padStart(2, '0');
 const hex4 = (v) => (v & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
 const hex5 = (v) => (v & 0xFFFFF).toString(16).toUpperCase().padStart(5, '0');
 const hex6 = (v) => (v >>> 0).toString(16).toUpperCase().padStart(6, '0');
+
+const MEM_ROW_HEIGHT = 20;
 
 async function decompressIfGzip(uint8) {
   if (uint8.byteLength >= 2 && uint8[0] === 0x1F && uint8[1] === 0x8B) {
@@ -34,17 +36,11 @@ class SC131EmulatorApp {
     this.sdBlinkTimeout = null;
     this.romCache = {};
 
-    // Flexible panel visibility state (debugger/disassembler off by default so Terminal is prominent)
-    this.panels = {
-      quickbar: true,
-      hardware: true,
-      cpu: false,
-      disasm: false,
-      memory: false,
-    };
-    this.savedPanelsBeforeFocus = null;
-    this.disasmLive = false;
-    this.memoryLive = false;
+    this.debuggerVisible = true;
+    this.debuggerLive = false;
+    this.disasmBaseAddr = null; // null = follow PC when refreshed
+    this.syncingTermScroll = false;
+    this.syncingMemInput = false;
 
     // Initialize terminals
     const canvas0 = document.getElementById('term-canvas-0');
@@ -59,6 +55,9 @@ class SC131EmulatorApp {
         this.sc131.sendSerial(0, b);
         this.triggerSerialDot(0);
       },
+      onScrollChange: () => {
+        if (this.activeSerialTab === 0) this.syncTerminalScrollbar();
+      },
     });
 
     this.term1 = new SerialTerminal(canvas1, {
@@ -69,6 +68,9 @@ class SC131EmulatorApp {
       onInput: (b) => {
         this.sc131.sendSerial(1, b);
         this.triggerSerialDot(1);
+      },
+      onScrollChange: () => {
+        if (this.activeSerialTab === 1) this.syncTerminalScrollbar();
       },
     });
 
@@ -84,8 +86,39 @@ class SC131EmulatorApp {
     });
 
     this.bindUI();
-    this.applyPanelsUI();
+    this.setupMemoryVirtualScroll();
+    this.syncTerminalScrollbar();
     this.bootDefaultSystem();
+  }
+
+  getActiveTerminal() {
+    return this.activeSerialTab === 0 ? this.term0 : this.term1;
+  }
+
+  /**
+   * Synchronize the dedicated right-edge scrollbar with the active terminal's scrollback buffer
+   */
+  syncTerminalScrollbar() {
+    const sb = document.getElementById('term-scrollbar');
+    const spacer = document.getElementById('term-scroll-spacer');
+    const term = this.getActiveTerminal();
+    if (!sb || !spacer || !term) return;
+
+    const canvasHeight = term.rows * term.charHeight + 16;
+    sb.style.height = `${canvasHeight}px`;
+
+    const totalLines = term.scrollback.length + term.rows;
+    const totalHeight = Math.max(canvasHeight, totalLines * term.charHeight + 16);
+    spacer.style.height = `${totalHeight}px`;
+
+    const maxScrollTop = Math.max(0, totalHeight - canvasHeight);
+    const targetScrollTop = term.scrollback.length > 0
+      ? Math.round(((term.scrollback.length - term.scrollOffset) / term.scrollback.length) * maxScrollTop)
+      : 0;
+
+    this.syncingTermScroll = true;
+    sb.scrollTop = targetScrollTop;
+    this.syncingTermScroll = false;
   }
 
   triggerSerialDot(ch) {
@@ -101,96 +134,34 @@ class SC131EmulatorApp {
     document.getElementById('led-power')?.classList.toggle('on', leds.power);
     document.getElementById('led-reset')?.classList.toggle('on', leds.reset);
     document.getElementById('led-sd-act')?.classList.toggle('on', leds.sdSelect);
-
-    // Topbar mini-LED cluster (always visible even in Terminal Focus mode)
-    document.getElementById('mini-led-status')?.classList.toggle('on', leds.status);
-    document.getElementById('mini-led-power')?.classList.toggle('on', leds.power);
-    document.getElementById('mini-led-reset')?.classList.toggle('on', leds.reset);
-    document.getElementById('mini-led-sd')?.classList.toggle('on', leds.sdSelect);
   }
 
   handleSdActivity(op, lba) {
-    if (this.panels.hardware) {
-      const opEl = document.getElementById('sd-last-op');
-      const lbaEl = document.getElementById('sd-last-lba');
-      const rwEl = document.getElementById('sd-rw-count');
-      if (opEl) opEl.textContent = op;
-      if (lbaEl) lbaEl.textContent = '0x' + hex6(lba);
-      if (rwEl) rwEl.textContent = `${this.sc131.sdcard.readCount} / ${this.sc131.sdcard.writeCount}`;
-    }
+    const opEl = document.getElementById('sd-last-op');
+    const lbaEl = document.getElementById('sd-last-lba');
+    const rwEl = document.getElementById('sd-rw-count');
+    if (opEl) opEl.textContent = op;
+    if (lbaEl) lbaEl.textContent = '0x' + hex6(lba);
+    if (rwEl) rwEl.textContent = `${this.sc131.sdcard.readCount} / ${this.sc131.sdcard.writeCount}`;
 
     const sdLed = document.getElementById('led-sd-act');
-    const miniSdLed = document.getElementById('mini-led-sd');
-    sdLed?.classList.add('on');
-    miniSdLed?.classList.add('on');
-    clearTimeout(this.sdBlinkTimeout);
-    this.sdBlinkTimeout = setTimeout(() => {
-      const sel = this.sc131.getLeds().sdSelect;
-      sdLed?.classList.toggle('on', sel);
-      miniSdLed?.classList.toggle('on', sel);
-    }, 65);
-  }
-
-  /**
-   * Toggle or set visibility of any workspace panel and update grid layout
-   */
-  setPanelVisible(panelKey, visible) {
-    if (!(panelKey in this.panels)) return;
-    this.panels[panelKey] = Boolean(visible);
-    this.savedPanelsBeforeFocus = null;
-    this.applyPanelsUI();
-
-    // Immediately populate the newly opened panel once
-    if (visible) {
-      if (panelKey === 'cpu') this.updateCpuMmuUI();
-      if (panelKey === 'disasm') this.updateDisasmUI(true);
-      if (panelKey === 'memory') this.updateMemoryHexUI(true);
+    if (sdLed) {
+      sdLed.classList.add('on');
+      clearTimeout(this.sdBlinkTimeout);
+      this.sdBlinkTimeout = setTimeout(() => {
+        sdLed.classList.toggle('on', this.sc131.getLeds().sdSelect);
+      }, 65);
     }
   }
 
-  toggleFocusTerminal() {
-    const anyAuxOpen = Object.values(this.panels).some(Boolean);
-    if (anyAuxOpen) {
-      this.savedPanelsBeforeFocus = { ...this.panels };
-      for (const k of Object.keys(this.panels)) this.panels[k] = false;
-    } else if (this.savedPanelsBeforeFocus) {
-      this.panels = { ...this.savedPanelsBeforeFocus };
-      this.savedPanelsBeforeFocus = null;
-    } else {
-      this.panels.quickbar = true;
-      this.panels.hardware = true;
-    }
-    this.applyPanelsUI();
-    (this.activeSerialTab === 0 ? this.term0 : this.term1).canvas.focus();
-  }
-
-  applyPanelsUI() {
-    const map = {
-      quickbar: 'card-quickbar',
-      hardware: 'card-hardware',
-      cpu: 'card-cpu',
-      disasm: 'card-disasm',
-      memory: 'card-memory',
-    };
-
-    for (const [key, cardId] of Object.entries(map)) {
-      const card = document.getElementById(cardId);
-      const btn = document.querySelector(`[data-panel="${key}"]`);
-      const isVis = this.panels[key];
-      card?.classList.toggle('hidden', !isVis);
-      btn?.classList.toggle('active', isVis);
-    }
-
-    const anySideVisible = this.panels.cpu || this.panels.disasm || this.panels.memory;
-    const sideCol = document.getElementById('side-column');
-    const workspace = document.getElementById('workspace-grid');
-    sideCol?.classList.toggle('hidden', !anySideVisible);
-    workspace?.classList.toggle('single-col', !anySideVisible);
-
-    const focusBtn = document.getElementById('btn-focus-terminal');
-    const anyAuxOpen = Object.values(this.panels).some(Boolean);
-    if (focusBtn) {
-      focusBtn.textContent = anyAuxOpen ? 'Focus Terminal' : 'Exit Focus Mode';
+  setDebuggerVisible(visible) {
+    this.debuggerVisible = Boolean(visible);
+    const sec = document.getElementById('debugger-section');
+    const btn = document.getElementById('btn-toggle-debugger');
+    sec?.classList.toggle('hidden', !this.debuggerVisible);
+    btn?.classList.toggle('active', this.debuggerVisible);
+    if (this.debuggerVisible) {
+      this.updateInspectorUI(true);
     }
   }
 
@@ -247,9 +218,6 @@ class SC131EmulatorApp {
     }
   }
 
-  /**
-   * Emulate the DS1233-5+ EconoReset ~250-500ms reset pulse (lights Red LED3, then starts Z180)
-   */
   triggerHardwareResetPulse(durationMs = 280) {
     this.sc131.reset();
     this.sc131.resetPulseRemainingMs = durationMs;
@@ -276,7 +244,7 @@ class SC131EmulatorApp {
       if (idx < str.length) setTimeout(stepChar, delayMs);
     };
     stepChar();
-    (this.activeSerialTab === 0 ? this.term0 : this.term1).canvas.focus();
+    this.getActiveTerminal().canvas.focus();
   }
 
   runLedBlinkDemo() {
@@ -296,25 +264,37 @@ class SC131EmulatorApp {
   }
 
   bindUI() {
-    // Panel toggle buttons in topbar
-    document.querySelectorAll('[data-panel]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const key = btn.getAttribute('data-panel');
-        if (key) this.setPanelVisible(key, !this.panels[key]);
-      });
+    // Dedicated Terminal Scrollbar handler
+    const termSb = document.getElementById('term-scrollbar');
+    termSb?.addEventListener('scroll', () => {
+      if (this.syncingTermScroll) return;
+      const term = this.getActiveTerminal();
+      if (!term || term.scrollback.length === 0) return;
+      const maxScrollTop = Math.max(1, termSb.scrollHeight - termSb.clientHeight);
+      const ratioFromTop = Math.max(0, Math.min(1, termSb.scrollTop / maxScrollTop));
+      const newOffset = Math.round((1 - ratioFromTop) * term.scrollback.length);
+      if (newOffset !== term.scrollOffset) {
+        term.scrollOffset = newOffset;
+        term.dirty = true;
+        term.render();
+      }
     });
 
-    // Close ('x') buttons inside individual cards
-    document.querySelectorAll('[data-close-panel]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const key = btn.getAttribute('data-close-panel');
-        if (key) this.setPanelVisible(key, false);
-      });
+    // Show/Hide Debugger section below terminal
+    document.getElementById('btn-toggle-debugger')?.addEventListener('click', () => {
+      this.setDebuggerVisible(!this.debuggerVisible);
+    });
+    document.getElementById('btn-hide-debugger')?.addEventListener('click', () => {
+      this.setDebuggerVisible(false);
     });
 
-    // Terminal Focus Mode button
-    document.getElementById('btn-focus-terminal')?.addEventListener('click', () => {
-      this.toggleFocusTerminal();
+    // Debugger Live & Snapshot Refresh controls
+    document.getElementById('chk-debugger-live')?.addEventListener('change', (e) => {
+      this.debuggerLive = e.target.checked;
+      if (this.debuggerLive) this.updateInspectorUI(true);
+    });
+    document.getElementById('btn-debugger-refresh')?.addEventListener('click', () => {
+      this.updateInspectorUI(true);
     });
 
     // Firmware selector
@@ -336,15 +316,12 @@ class SC131EmulatorApp {
       this.updateInspectorUI(true);
     });
 
-    // Single Step (automatically reveals CPU & Disassembler panels so user can see the step)
+    // Single Step
     document.getElementById('btn-step')?.addEventListener('click', () => {
       this.running = false;
+      this.disasmBaseAddr = null;
       this.updateRunPauseButton();
-      if (!this.panels.cpu && !this.panels.disasm) {
-        this.panels.cpu = true;
-        this.panels.disasm = true;
-        this.applyPanelsUI();
-      }
+      if (!this.debuggerVisible) this.setDebuggerVisible(true);
       this.sc131.cpu.step();
       this.term0.render();
       this.term1.render();
@@ -359,26 +336,6 @@ class SC131EmulatorApp {
     };
     document.getElementById('btn-reset')?.addEventListener('click', doReset);
     document.getElementById('hw-reset-btn')?.addEventListener('click', doReset);
-
-    // Hardware view toggle (Enclosure vs Naked PCB)
-    const btnFront = document.getElementById('btn-view-front');
-    const btnPcb = document.getElementById('btn-view-pcb');
-    const viewFront = document.getElementById('panel-front-view');
-    const viewPcb = document.getElementById('panel-pcb-view');
-
-    btnFront?.addEventListener('click', () => {
-      btnFront.classList.add('active');
-      btnPcb?.classList.remove('active');
-      viewFront?.classList.remove('hidden');
-      viewPcb?.classList.add('hidden');
-    });
-
-    btnPcb?.addEventListener('click', () => {
-      btnPcb.classList.add('active');
-      btnFront?.classList.remove('active');
-      viewPcb?.classList.remove('hidden');
-      viewFront?.classList.add('hidden');
-    });
 
     // JP1 Flash Write Protect Jumper
     const btnJp1 = document.getElementById('btn-jp1');
@@ -398,7 +355,7 @@ class SC131EmulatorApp {
       btnJp2.classList.toggle('rd', this.sc131.jp2PowerPortB);
       btnJp2.textContent = this.sc131.jp2PowerPortB
         ? 'JP2: Fitted (Port B 5V Connected)'
-        : 'JP2: Open (Powered via Port A)';
+        : 'JP2: Open (Via Port A)';
     });
 
     // Vcc Voltage Supervisor Slider (DS1233-5+ trips below 4.7V)
@@ -494,6 +451,7 @@ class SC131EmulatorApp {
       this.term1.canvas.classList.add('hidden');
       this.term0.dirty = true;
       this.term0.render();
+      this.syncTerminalScrollbar();
       this.term0.canvas.focus();
     });
 
@@ -505,6 +463,7 @@ class SC131EmulatorApp {
       this.term0.canvas.classList.add('hidden');
       this.term1.dirty = true;
       this.term1.render();
+      this.syncTerminalScrollbar();
       this.term1.canvas.focus();
     });
 
@@ -513,7 +472,8 @@ class SC131EmulatorApp {
       const preset = e.target.value;
       this.term0.setSizePreset(preset);
       this.term1.setSizePreset(preset);
-      (this.activeSerialTab === 0 ? this.term0 : this.term1).canvas.focus();
+      this.syncTerminalScrollbar();
+      this.getActiveTerminal().canvas.focus();
     });
 
     // Terminal toolbar controls
@@ -547,30 +507,36 @@ class SC131EmulatorApp {
     });
 
     document.getElementById('btn-copy-screen')?.addEventListener('click', () => {
-      const term = this.activeSerialTab === 0 ? this.term0 : this.term1;
-      navigator.clipboard?.writeText(term.getScreenText());
+      navigator.clipboard?.writeText(this.getActiveTerminal().getScreenText());
     });
 
     document.getElementById('btn-clear-term')?.addEventListener('click', () => {
-      const term = this.activeSerialTab === 0 ? this.term0 : this.term1;
+      const term = this.getActiveTerminal();
       term.reset();
       term.render();
+      this.syncTerminalScrollbar();
       term.canvas.focus();
     });
 
-    // Disassembler Live & Refresh controls
-    document.getElementById('chk-disasm-live')?.addEventListener('change', (e) => {
-      this.disasmLive = e.target.checked;
-      const note = document.getElementById('disasm-status-note');
-      if (note) note.classList.toggle('hidden', this.disasmLive);
-      if (this.disasmLive) this.updateDisasmUI(true);
+    // Disassembler address & breakpoint controls
+    document.getElementById('btn-disasm-pc')?.addEventListener('click', () => {
+      this.disasmBaseAddr = null;
+      const addrIn = document.getElementById('disasm-addr-input');
+      if (addrIn) addrIn.value = '';
+      this.updateDisasmUI();
     });
 
-    document.getElementById('btn-disasm-refresh')?.addEventListener('click', () => {
-      this.updateDisasmUI(true);
+    document.getElementById('disasm-addr-input')?.addEventListener('input', (e) => {
+      const val = e.target.value.trim();
+      if (!val) {
+        this.disasmBaseAddr = null;
+      } else {
+        const parsed = parseInt(val, 16);
+        if (!Number.isNaN(parsed)) this.disasmBaseAddr = parsed & 0xFFFF;
+      }
+      this.updateDisasmUI();
     });
 
-    // Breakpoint controls
     document.getElementById('btn-add-bp')?.addEventListener('click', () => {
       const input = document.getElementById('bp-input');
       if (!input) return;
@@ -580,23 +546,135 @@ class SC131EmulatorApp {
         if (this.sc131.breakpoints.has(a16)) this.sc131.breakpoints.delete(a16);
         else this.sc131.breakpoints.add(a16);
         input.value = '';
-        this.updateDisasmUI(true);
+        this.updateDisasmUI();
       }
     });
 
     document.getElementById('btn-clear-bp')?.addEventListener('click', () => {
       this.sc131.breakpoints.clear();
-      this.updateDisasmUI(true);
+      this.updateDisasmUI();
+    });
+  }
+
+  /**
+   * Set up the virtualized full-range scrollable Memory Hex Inspector
+   */
+  setupMemoryVirtualScroll() {
+    const container = document.getElementById('mem-scroll-container');
+    const spaceSelect = document.getElementById('mem-space-select');
+    const addrInput = document.getElementById('mem-addr-input');
+
+    const updateMemRangeDimensions = () => {
+      const space = spaceSelect?.value || 'logical';
+      const totalBytes = space === 'logical' ? 0x10000 : 0x80000;
+      const totalRows = totalBytes / 16;
+      const spacer = document.getElementById('mem-scroll-spacer');
+      if (spacer) spacer.style.height = `${totalRows * MEM_ROW_HEIGHT}px`;
+
+      const label = document.getElementById('mem-range-label');
+      if (label) {
+        if (space === 'logical') label.textContent = '$0000 – $FFFF (64 KB Logical CPU)';
+        else if (space === 'rom') label.textContent = '$00000 – $7FFFF (512 KB Flash ROM U1)';
+        else label.textContent = '$00000 – $7FFFF (512 KB Static RAM U2)';
+      }
+      this.renderVisibleMemoryHex();
+    };
+
+    container?.addEventListener('scroll', () => {
+      this.renderVisibleMemoryHex();
+      if (!this.syncingMemInput && addrInput) {
+        const topRow = Math.floor(container.scrollTop / MEM_ROW_HEIGHT);
+        const space = spaceSelect?.value || 'logical';
+        const addr = topRow * 16;
+        addrInput.value = space === 'logical' ? hex4(addr) : hex5(addr);
+      }
     });
 
-    // Memory viewer Live, Refresh, Space & Address controls
-    document.getElementById('chk-mem-live')?.addEventListener('change', (e) => {
-      this.memoryLive = e.target.checked;
-      if (this.memoryLive) this.updateMemoryHexUI(true);
+    spaceSelect?.addEventListener('change', () => {
+      if (container) container.scrollTop = 0;
+      updateMemRangeDimensions();
     });
-    document.getElementById('btn-mem-refresh')?.addEventListener('click', () => this.updateMemoryHexUI(true));
-    document.getElementById('mem-space-select')?.addEventListener('change', () => this.updateMemoryHexUI(true));
-    document.getElementById('mem-addr-input')?.addEventListener('input', () => this.updateMemoryHexUI(true));
+
+    const scrollToAddress = (addr) => {
+      if (!container) return;
+      const space = spaceSelect?.value || 'logical';
+      const maxAddr = space === 'logical' ? 0xFFFF : 0x7FFFF;
+      const clamped = Math.max(0, Math.min(maxAddr, addr));
+      const row = Math.floor(clamped / 16);
+      this.syncingMemInput = true;
+      container.scrollTop = row * MEM_ROW_HEIGHT;
+      this.syncingMemInput = false;
+      if (addrInput) {
+        addrInput.value = space === 'logical' ? hex4(clamped & ~0xF) : hex5(clamped & ~0xF);
+      }
+      this.renderVisibleMemoryHex();
+    };
+
+    addrInput?.addEventListener('input', () => {
+      const parsed = parseInt(addrInput.value.trim(), 16);
+      if (!Number.isNaN(parsed)) {
+        scrollToAddress(parsed);
+      }
+    });
+
+    document.querySelectorAll('[data-mem-jump]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const hex = btn.getAttribute('data-mem-jump') || '0000';
+        scrollToAddress(parseInt(hex, 16) || 0);
+      });
+    });
+
+    document.querySelectorAll('[data-mem-reg]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const reg = btn.getAttribute('data-mem-reg');
+        const st = this.sc131.cpu.getState();
+        if (spaceSelect) spaceSelect.value = 'logical';
+        updateMemRangeDimensions();
+        if (reg === 'pc') scrollToAddress(st.pc);
+        else if (reg === 'sp') scrollToAddress(st.sp);
+        else if (reg === 'hl') scrollToAddress(st.hl);
+      });
+    });
+
+    updateMemRangeDimensions();
+  }
+
+  renderVisibleMemoryHex() {
+    const container = document.getElementById('mem-scroll-container');
+    const viewport = document.getElementById('mem-hex-view');
+    const space = document.getElementById('mem-space-select')?.value || 'logical';
+    if (!container || !viewport) return;
+
+    const totalRows = (space === 'logical' ? 0x10000 : 0x80000) / 16;
+    const scrollTop = container.scrollTop;
+    const visibleRowCount = Math.ceil((container.clientHeight || 260) / MEM_ROW_HEIGHT) + 2;
+    const startRow = Math.max(0, Math.min(totalRows - 1, Math.floor(scrollTop / MEM_ROW_HEIGHT)));
+    const endRow = Math.min(totalRows, startRow + visibleRowCount);
+
+    viewport.style.transform = `translateY(${startRow * MEM_ROW_HEIGHT}px)`;
+
+    const htmlRows = [];
+    for (let r = startRow; r < endRow; r++) {
+      const rowAddr = r * 16;
+      const hexCols = [];
+      let ascii = '';
+      for (let c = 0; c < 16; c++) {
+        const a = rowAddr + c;
+        let b = 0;
+        if (space === 'logical') b = this.sc131.cpu.memRead(a & 0xFFFF);
+        else if (space === 'rom') b = this.sc131.rom[a & 0x7FFFF];
+        else b = this.sc131.ram[a & 0x7FFFF];
+        hexCols.push(hex2(b));
+        const ch = (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.';
+        ascii += ch === '<' ? '&lt;' : ch === '>' ? '&gt;' : ch === '&' ? '&amp;' : ch;
+      }
+      const addrLabel = space === 'logical' ? hex4(rowAddr) : hex5(rowAddr);
+      const bytesStr = `${hexCols.slice(0, 8).join(' ')}   ${hexCols.slice(8).join(' ')}`;
+      htmlRows.push(
+        `<div class="hex-row"><span class="hex-addr">${addrLabel}:</span><span class="hex-bytes">${bytesStr}</span><span class="hex-ascii">|${ascii}|</span></div>`
+      );
+    }
+    viewport.innerHTML = htmlRows.join('');
   }
 
   updateRunPauseButton() {
@@ -638,9 +716,8 @@ class SC131EmulatorApp {
         const { breakpointHit } = this.sc131.runCycles(targetCycles);
         if (breakpointHit) {
           this.running = false;
-          this.panels.cpu = true;
-          this.panels.disasm = true;
-          this.applyPanelsUI();
+          this.disasmBaseAddr = null;
+          if (!this.debuggerVisible) this.setDebuggerVisible(true);
           this.updateRunPauseButton();
           this.updateStatusPill();
           this.updateInspectorUI(true);
@@ -662,10 +739,6 @@ class SC131EmulatorApp {
     requestAnimationFrame(frame);
   }
 
-  /**
-   * Updates only the visible panels. Disassembler and Memory Hex are only recomputed
-   * when forced (Pause/Step/Reset/Refresh) or when their "Live" checkbox is enabled.
-   */
   updateInspectorUI(force = false) {
     const st = this.sc131.cpu.getState();
     const mhz = (st.phiHz / 1e6).toFixed(3);
@@ -675,28 +748,24 @@ class SC131EmulatorApp {
       perfEl.textContent = `PHI ${mhz} MHz • ${(st.cycles / 1e6).toFixed(1)}M T-states`;
     }
 
-    if (this.panels.hardware) {
-      const s0 = this.sc131.getSerialConfig(0);
-      const s1 = this.sc131.getSerialConfig(1);
-      const phiEl = document.getElementById('pcb-phi-label');
-      const a0El = document.getElementById('asci0-cfg');
-      const a1El = document.getElementById('asci1-cfg');
-      if (phiEl) phiEl.textContent = `PHI = ${mhz} MHz`;
-      if (a0El) a0El.textContent = `${s0.baud} ${s0.framing}`;
-      if (a1El) a1El.textContent = `${s1.baud} ${s1.framing}`;
-      document.getElementById('asci0-rts')?.classList.toggle('on', s0.rts);
-    }
+    // Update always-visible right-column hardware status
+    const s0 = this.sc131.getSerialConfig(0);
+    const s1 = this.sc131.getSerialConfig(1);
+    const phiEl = document.getElementById('pcb-phi-label');
+    const a0El = document.getElementById('asci0-cfg');
+    const a1El = document.getElementById('asci1-cfg');
+    if (phiEl) phiEl.textContent = `PHI = ${mhz} MHz`;
+    if (a0El) a0El.textContent = `${s0.baud} ${s0.framing}`;
+    if (a1El) a1El.textContent = `${s1.baud} ${s1.framing}`;
+    document.getElementById('asci0-rts')?.classList.toggle('on', s0.rts);
 
-    if (this.panels.cpu) {
-      this.updateCpuMmuUI(st);
-    }
+    if (!this.debuggerVisible) return;
 
-    if (this.panels.disasm && (force || !this.running || this.disasmLive)) {
-      this.updateDisasmUI(true, st);
-    }
+    this.updateCpuMmuUI(st);
 
-    if (this.panels.memory && (force || !this.running || this.memoryLive)) {
-      this.updateMemoryHexUI(true);
+    if (force || !this.running || this.debuggerLive) {
+      this.updateDisasmUI(st);
+      this.renderVisibleMemoryHex();
     }
   }
 
@@ -754,12 +823,12 @@ class SC131EmulatorApp {
     }
   }
 
-  updateDisasmUI(force = false, st = this.sc131.cpu.getState()) {
-    if (!this.panels.disasm && !force) return;
+  updateDisasmUI(st = this.sc131.cpu.getState()) {
     const disasmEl = document.getElementById('disasm-view');
     if (!disasmEl) return;
 
-    const lines = disassembleRange((a) => this.sc131.cpu.memRead(a), st.pc, 12);
+    const startAddr = this.disasmBaseAddr !== null ? this.disasmBaseAddr : st.pc;
+    const lines = disassembleRange((a) => this.sc131.cpu.memRead(a), startAddr, 64);
     disasmEl.innerHTML = lines.map((inst) => {
       const isPc = inst.addr === st.pc;
       const hasBp = this.sc131.breakpoints.has(inst.addr);
@@ -776,37 +845,9 @@ class SC131EmulatorApp {
         const a = parseInt(row.getAttribute('data-addr'), 10);
         if (this.sc131.breakpoints.has(a)) this.sc131.breakpoints.delete(a);
         else this.sc131.breakpoints.add(a);
-        this.updateDisasmUI(true);
+        this.updateDisasmUI();
       });
     });
-  }
-
-  updateMemoryHexUI(force = false) {
-    if (!this.panels.memory && !force) return;
-    const space = document.getElementById('mem-space-select')?.value || 'logical';
-    const addrStr = document.getElementById('mem-addr-input')?.value || '0000';
-    const baseAddr = parseInt(addrStr, 16) || 0;
-    const pre = document.getElementById('mem-hex-view');
-    if (!pre) return;
-
-    const rows = [];
-    for (let r = 0; r < 8; r++) {
-      const rowAddr = baseAddr + r * 16;
-      const hexCols = [];
-      let ascii = '';
-      for (let c = 0; c < 16; c++) {
-        const a = rowAddr + c;
-        let b = 0;
-        if (space === 'logical') b = this.sc131.cpu.memRead(a & 0xFFFF);
-        else if (space === 'rom') b = this.sc131.rom[a & 0x7FFFF];
-        else b = this.sc131.ram[a & 0x7FFFF];
-        hexCols.push(hex2(b));
-        ascii += (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.';
-      }
-      const label = space === 'logical' ? hex4(rowAddr) : hex5(rowAddr);
-      rows.push(`${label}: ${hexCols.slice(0, 8).join(' ')}  ${hexCols.slice(8).join(' ')}  |${ascii}|`);
-    }
-    pre.textContent = rows.join('\n');
   }
 }
 

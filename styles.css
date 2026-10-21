@@ -794,11 +794,35 @@ select, input[type="text"] {
   padding: 6px;
 }
 
+.terminal-viewport {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid #1e293b;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #05070b;
+}
+
 #term-canvas-0, #term-canvas-1 {
   max-width: 100%;
   height: auto;
   outline: none;
   cursor: text;
+  display: block;
+}
+
+.term-scrollbar {
+  width: 18px;
+  overflow-y: scroll;
+  overflow-x: hidden;
+  background: #0d131f;
+  border-left: 1px solid #243247;
+  user-select: none;
+}
+
+.term-scroll-spacer {
+  width: 1px;
+  height: 100%;
 }
 
 .terminal-footer {
@@ -808,20 +832,56 @@ select, input[type="text"] {
   margin-top: 6px;
 }
 
-/* Right Column: CPU / MMU / Disassembler / Hex Inspector */
-.inspector-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.text-muted {
+  color: var(--text-muted);
 }
 
-.inspector-note {
-  background: rgba(56, 189, 248, 0.08);
-  border: 1px solid rgba(56, 189, 248, 0.25);
-  color: #93c5fd;
-  padding: 4px 7px;
-  border-radius: 4px;
-  margin-bottom: 6px;
+/* Right Column Hardware Stack */
+.rear-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pcb-chips-grid-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+/* Debugger Section Below the Terminal */
+.debugger-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.debugger-topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+}
+
+.debugger-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.debugger-top-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 960px) {
+  .debugger-top-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .regs-grid {
@@ -888,12 +948,19 @@ select, input[type="text"] {
 
 .bp-controls, .mem-controls {
   display: flex;
-  gap: 4px;
+  flex-wrap: wrap;
+  gap: 5px;
   align-items: center;
 }
 
+.mem-jump-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
 .bp-controls .input-xs, .mem-controls .input-xs {
-  width: 74px;
+  width: 68px;
 }
 
 .disasm-list {
@@ -901,14 +968,14 @@ select, input[type="text"] {
   border: 1px solid #1c2738;
   border-radius: 5px;
   padding: 6px;
-  max-height: 195px;
-  overflow-y: auto;
+  height: 245px;
+  overflow-y: scroll;
 }
 
 .disasm-row {
   display: grid;
-  grid-template-columns: 52px 86px 1fr;
-  padding: 1.5px 4px;
+  grid-template-columns: 56px 92px 1fr;
+  padding: 2px 5px;
   border-radius: 3px;
   cursor: pointer;
 }
@@ -924,13 +991,93 @@ select, input[type="text"] {
   color: #f87171;
 }
 
-.hex-dump {
-  background: var(--bg-card-alt);
-  border: 1px solid #1c2738;
-  border-radius: 5px;
-  padding: 6px;
-  line-height: 1.38;
-  color: #cbd5e1;
+/* Virtualized Full-Memory Scrollable Hex Inspector */
+.hex-header {
+  display: grid;
+  grid-template-columns: 64px 410px 1fr;
+  padding: 4px 10px;
+  background: #141e2e;
+  border: 1px solid #22314a;
+  border-bottom: none;
+  border-radius: 5px 5px 0 0;
+  color: var(--sc131-gold);
+  font-weight: 700;
+}
+
+.hex-scroll-container {
+  position: relative;
+  height: 260px;
+  overflow-y: scroll;
   overflow-x: auto;
-  max-height: 185px;
+  background: var(--bg-card-alt);
+  border: 1px solid #22314a;
+  border-radius: 0 0 5px 5px;
+}
+
+.hex-scroll-spacer {
+  width: 1px;
+  pointer-events: none;
+}
+
+.hex-rows-viewport {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 4px 10px;
+}
+
+.hex-row {
+  display: grid;
+  grid-template-columns: 64px 410px 1fr;
+  height: 20px;
+  line-height: 20px;
+  white-space: pre;
+}
+
+.hex-row:hover {
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.hex-addr {
+  color: #38bdf8;
+  font-weight: 700;
+}
+
+.hex-bytes {
+  color: #cbd5e1;
+}
+
+.hex-ascii {
+  color: #fbbf24;
+}
+
+/* Always-visible styled scrollbars for Terminal, Disassembler, and Memory Hex */
+.term-scrollbar::-webkit-scrollbar,
+.disasm-list::-webkit-scrollbar,
+.hex-scroll-container::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+
+.term-scrollbar::-webkit-scrollbar-track,
+.disasm-list::-webkit-scrollbar-track,
+.hex-scroll-container::-webkit-scrollbar-track {
+  background: #0b101b;
+  border-left: 1px solid #1e293b;
+}
+
+.term-scrollbar::-webkit-scrollbar-thumb,
+.disasm-list::-webkit-scrollbar-thumb,
+.hex-scroll-container::-webkit-scrollbar-thumb {
+  background: #334155;
+  border: 2px solid #0b101b;
+  border-radius: 7px;
+  min-height: 28px;
+}
+
+.term-scrollbar::-webkit-scrollbar-thumb:hover,
+.disasm-list::-webkit-scrollbar-thumb:hover,
+.hex-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
 }

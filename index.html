@@ -13,33 +13,13 @@
       <div class="brand-badge">SC131</div>
       <div>
         <div class="brand-title-row">
-          <h1>SC131 Z180 Pocket Computer</h1>
+          <h1>SC131 Z180 Pocket Computer Emulator</h1>
           <span id="status-pill" class="pill pill-running">RUNNING @ 18.432 MHz</span>
         </div>
         <p class="subtitle">
           Zilog Z8S180 @ 18.432 MHz &bull; 512 KB Flash &bull; 512 KB SRAM &bull; SPI SDHC &bull;
           <a href="https://smallcomputercentral.com/sc131-z180-pocket-computer/" target="_blank" rel="noopener">Small Computer Central</a>
         </p>
-      </div>
-    </div>
-
-    <!-- Compact Always-Visible SC131 LED Cluster -->
-    <div class="mini-hw-cluster" title="Live SC131 Front-Panel &amp; SD Card LEDs">
-      <div class="mini-led-item" title="LED1: Orange Status LED (Port 0x0E Bit 2 Active Low)">
-        <span id="mini-led-status" class="led led-orange on"></span>
-        <span>Status</span>
-      </div>
-      <div class="mini-led-item" title="LED2: Green 5V Power LED">
-        <span id="mini-led-power" class="led led-green on"></span>
-        <span>Power</span>
-      </div>
-      <div class="mini-led-item" title="LED3: Red Reset LED (DS1233 Supervisor / SW1)">
-        <span id="mini-led-reset" class="led led-red"></span>
-        <span>Reset</span>
-      </div>
-      <div class="mini-led-item" title="MicroSDHC SPI Activity (Port 0x0C / CSIO)">
-        <span id="mini-led-sd" class="led led-cyan"></span>
-        <span>SD</span>
       </div>
     </div>
 
@@ -64,38 +44,15 @@
 
       <div class="button-row">
         <button id="btn-run-pause" class="btn btn-primary" title="Pause or Resume CPU Execution">Pause</button>
-        <button id="btn-step" class="btn" title="Single-step one Z180 instruction (opens CPU &amp; Disassembler)">Step</button>
+        <button id="btn-step" class="btn" title="Single-step one Z180 instruction">Step</button>
         <button id="btn-reset" class="btn btn-danger" title="Press SW1 Tactile Reset Button">Reset (SW1)</button>
+        <button id="btn-toggle-debugger" class="btn btn-toggle active" title="Show or Hide the Debugger below the Terminal">Debugger</button>
       </div>
-    </div>
-
-    <!-- Flexible Panel Visibility Bar -->
-    <div class="panel-toggle-bar">
-      <span class="panel-bar-label">Panels:</span>
-      <button id="toggle-panel-quickbar" class="btn btn-xs btn-toggle active" data-panel="quickbar" title="Show/Hide Quick Launch Macros">
-        Quick Launch
-      </button>
-      <button id="toggle-panel-hardware" class="btn btn-xs btn-toggle active" data-panel="hardware" title="Show/Hide SC131 Enclosure, PCB &amp; SD Card Panel">
-        Hardware &amp; SD
-      </button>
-      <button id="toggle-panel-cpu" class="btn btn-xs btn-toggle" data-panel="cpu" title="Show/Hide Z8S180 CPU Registers &amp; MMU Inspector">
-        CPU &amp; MMU
-      </button>
-      <button id="toggle-panel-disasm" class="btn btn-xs btn-toggle" data-panel="disasm" title="Show/Hide Z180 Disassembler &amp; Breakpoints">
-        Disassembler
-      </button>
-      <button id="toggle-panel-memory" class="btn btn-xs btn-toggle" data-panel="memory" title="Show/Hide 1 MB Memory Hex Inspector">
-        Memory Hex
-      </button>
-      <span class="panel-bar-sep"></span>
-      <button id="btn-focus-terminal" class="btn btn-xs btn-accent" title="Toggle Terminal Focus Mode (hide all auxiliary panels)">
-        Focus Terminal
-      </button>
     </div>
   </header>
 
-  <main id="workspace-grid" class="workspace single-col">
-    <!-- Primary Column: Prominent Terminal + Quick Launch + Hardware Enclosure/PCB -->
+  <main class="workspace">
+    <!-- Left Column: Prominent Terminal on Top + Debugger Below Terminal -->
     <section class="main-column">
       <!-- Quick Boot & Macro Bar -->
       <div id="card-quickbar" class="card quickbar-card">
@@ -116,11 +73,10 @@
           <button class="btn btn-xs" data-macro="M&#13;" title="Launch RomWBW System Monitor">Monitor</button>
           <button class="btn btn-xs" data-macro="S&#13;" title="List SD Card Slices at Boot Loader">Slices (S)</button>
           <button id="btn-led-demo" class="btn btn-xs btn-accent" title="Send a BASIC program that blinks the Orange Status LED (Port 14)">LED1 Blink Demo</button>
-          <button class="btn-close-panel" data-close-panel="quickbar" title="Hide Quick Launch Bar">&times;</button>
         </div>
       </div>
 
-      <!-- Dual VT100 / ANSI Serial Terminal Card (Prominent Primary View) -->
+      <!-- Dual VT100 / ANSI Serial Terminal Card (Scrollbar-only Scrollback) -->
       <div class="card terminal-card">
         <div class="card-header terminal-header">
           <div class="terminal-tabs">
@@ -159,262 +115,295 @@
         </div>
 
         <div class="terminal-canvas-wrap">
-          <canvas id="term-canvas-0"></canvas>
-          <canvas id="term-canvas-1" class="hidden"></canvas>
+          <div class="terminal-viewport">
+            <canvas id="term-canvas-0"></canvas>
+            <canvas id="term-canvas-1" class="hidden"></canvas>
+            <!-- Dedicated Terminal Scrollbar (scrollback is controlled exclusively via this scrollbar) -->
+            <div id="term-scrollbar" class="term-scrollbar" title="Drag scrollbar to view terminal scrollback history">
+              <div id="term-scroll-spacer" class="term-scroll-spacer"></div>
+            </div>
+          </div>
         </div>
 
         <div class="terminal-footer mono-xs">
-          <span>Click inside the terminal to type &bull; 115200 8N1 FTDI Serial Console &bull; Mouse wheel scrolls history</span>
+          <span>Click inside the terminal to type &bull; 115200 8N1 FTDI Serial Console &bull; Use the right-edge scrollbar for scrollback</span>
           <span id="perf-counter">18.43 MHz &bull; 0 cycles</span>
         </div>
       </div>
 
-      <!-- SC131 Hardware Visualization Card -->
-      <div id="card-hardware" class="card hardware-card">
-        <div class="card-header">
+      <!-- Debugger Section Below the Terminal -->
+      <section id="debugger-section" class="debugger-section">
+        <div class="debugger-topbar card">
           <div class="card-title-group">
-            <h2>SC131 Pocket Computer Hardware &amp; MicroSDHC</h2>
+            <h2>Z8S180 Hardware Debugger &amp; Memory Inspector</h2>
+            <span class="mono-xs text-muted">(Updates on Pause/Step/Refresh, or enable Live)</span>
           </div>
-          <div class="view-toggle">
-            <button id="btn-view-front" class="btn btn-sm active">Enclosure Front / Rear</button>
-            <button id="btn-view-pcb" class="btn btn-sm">Motherboard PCB &amp; Jumpers</button>
-            <button class="btn-close-panel" data-close-panel="hardware" title="Hide Hardware Panel">&times;</button>
-          </div>
-        </div>
-
-        <!-- View 1: SC131 Red & Gold Front Panel + Rear Ports -->
-        <div id="panel-front-view" class="sc131-enclosure-grid">
-          <!-- Front Panel -->
-          <div class="sc131-front-panel">
-            <div class="screw screw-tl"></div>
-            <div class="screw screw-tr"></div>
-            <div class="screw screw-bl"></div>
-            <div class="screw screw-br"></div>
-
-            <div class="panel-gold-border">
-              <div class="panel-left-controls">
-                <div class="led-row" title="LED1: Status LED (Orange, Port 0x0E Bit 2 Active Low)">
-                  <span id="led-status" class="led led-orange on"></span>
-                  <span class="led-label">Status</span>
-                </div>
-                <div class="led-row" title="LED2: Power LED (Green, 5V DC Supply)">
-                  <span id="led-power" class="led led-green on"></span>
-                  <span class="led-label">Power</span>
-                </div>
-                <div class="led-row" title="LED3: Reset LED (Red, DS1233 Supervisor / SW1 Reset)">
-                  <span id="led-reset" class="led led-red"></span>
-                  <span class="led-label">Reset</span>
-                </div>
-                <div class="reset-switch-row">
-                  <button id="hw-reset-btn" class="tactile-reset-btn" title="Press SW1 Tactile Reset Switch"></button>
-                  <span class="led-label">SW1</span>
-                </div>
-              </div>
-
-              <div class="panel-branding">
-                <div class="sc-title">SC131</div>
-                <div class="sc-sub">POCKET COMPUTER</div>
-                <div class="sc-mhz">Z180 &bull; 0.018 GHz</div>
-                <div class="sc-maker">Small Computer Central</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Rear Panel / Peripherals Status -->
-          <div class="sc131-rear-panel">
-            <div class="rear-section">
-              <div class="rear-title">P1 &bull; SPI MicroSDHC Slot (Port 0x0C / CSIO)</div>
-              <div class="sd-slot-box">
-                <div class="sd-indicator-row">
-                  <span id="led-sd-act" class="led led-cyan" title="SPI /CS Active Indicator"></span>
-                  <span id="sd-status-text" class="mono-sm">SD0: 68 MB SDHC (8 Slices)</span>
-                </div>
-                <div class="sd-stats mono-xs">
-                  <span>Op: <strong id="sd-last-op">IDLE</strong></span>
-                  <span>LBA: <strong id="sd-last-lba">0x000000</strong></span>
-                  <span>R/W: <strong id="sd-rw-count">0 / 0</strong></span>
-                </div>
-                <div class="sd-btn-row">
-                  <label class="btn btn-xs" title="Mount a custom raw .img or .simg SD card image">
-                    Mount .img
-                    <input type="file" id="sd-file-input" accept=".img,.bin,.simg,.dat" hidden />
-                  </label>
-                  <button id="btn-sd-export" class="btn btn-xs" title="Download active SD card image">Export .img</button>
-                  <button id="btn-sd-eject" class="btn btn-xs" title="Eject or Re-insert Micro SD Card">Eject SD</button>
-                </div>
-              </div>
-            </div>
-
-            <div class="rear-section">
-              <div class="rear-title">P3 &amp; P2 &bull; 5V FTDI Serial Ports &amp; DS1233 Supervisor</div>
-              <div class="serial-ports-status mono-xs">
-                <div class="port-stat">
-                  <span>P3 Serial A (ASCI0):</span>
-                  <strong id="asci0-cfg">115200 8N1</strong>
-                  <span id="asci0-rts" class="badge-mini on">RTS</span>
-                </div>
-                <div class="port-stat">
-                  <span>P2 Serial B (ASCI1):</span>
-                  <strong id="asci1-cfg">115200 8N1</strong>
-                </div>
-                <div class="voltage-control" title="DS1233-5+ EconoReset holds the Z180 in reset if supply voltage drops below 4.7V">
-                  <label for="vcc-slider">Vcc Supply: <strong id="vcc-val">5.00V</strong></label>
-                  <input type="range" id="vcc-slider" min="4.2" max="5.2" step="0.05" value="5.0" />
-                </div>
-              </div>
-            </div>
+          <div class="debugger-actions">
+            <label class="checkbox-xs" title="Continuously update Disassembler &amp; Memory Hex while CPU is running">
+              <input type="checkbox" id="chk-debugger-live" /> Live Updates While Running
+            </label>
+            <button id="btn-debugger-refresh" class="btn btn-xs btn-accent" title="Snapshot current CPU, Disassembler, and Memory state now">Refresh Snapshot</button>
+            <button id="btn-hide-debugger" class="btn btn-xs" title="Hide Debugger Section">Hide Debugger</button>
           </div>
         </div>
 
-        <!-- View 2: Interactive SC131 PCB & Jumpers Diagram -->
-        <div id="panel-pcb-view" class="sc131-pcb-view hidden">
-          <div class="pcb-board">
-            <div class="pcb-header-row">
-              <span class="pcb-silk">SC131 v1.0 &bull; Stephen C Cousins</span>
-              <span class="pcb-silk">101.6 mm &times; 66.14 mm</span>
-            </div>
-            <div class="pcb-chips-grid">
-              <div class="ic-chip" id="chip-u1">
-                <div class="ic-notch"></div>
-                <div class="ic-name">U1 &bull; SST39SF040</div>
-                <div class="ic-desc">512 KB Flash ROM</div>
-                <div class="ic-addr mono-xs">0x00000 &ndash; 0x7FFFF</div>
-                <label class="btn btn-xs ic-upload-btn">
-                  Load Custom ROM
-                  <input type="file" id="rom-file-input" accept=".rom,.bin,.hex,.upd" hidden />
-                </label>
-              </div>
-
-              <div class="ic-chip" id="chip-u2">
-                <div class="ic-notch"></div>
-                <div class="ic-name">U2 &bull; AS6C4008</div>
-                <div class="ic-desc">512 KB Static RAM</div>
-                <div class="ic-addr mono-xs">0x80000 &ndash; 0xFFFFF</div>
-              </div>
-
-              <div class="ic-chip ic-plcc" id="chip-u4">
-                <div class="ic-name">U4 &bull; Z8S18020VSC</div>
-                <div class="ic-desc">Z180 CPU (PLCC-68)</div>
-                <div class="ic-addr mono-xs" id="pcb-phi-label">PHI = 18.432 MHz</div>
-              </div>
-
-              <div class="ic-chip ic-small">
-                <div class="ic-name">U3 &bull; 74AHCT139</div>
-                <div class="ic-desc">Mem A19 &amp; I/O Decoder</div>
-                <div class="ic-addr mono-xs">Y0: I/O 0x00&ndash;0x3F</div>
-              </div>
-
-              <div class="ic-chip ic-small">
-                <div class="ic-name">U5 &bull; 74HCT259</div>
-                <div class="ic-desc">Addressable Latch</div>
-                <div class="ic-addr mono-xs">0x0C=/CS, 0x0E=LED1</div>
-              </div>
-
-              <div class="ic-chip ic-small">
-                <div class="ic-name">U7 &bull; DS1233-5+</div>
-                <div class="ic-desc">EconoReset (&lt;4.7V)</div>
-                <div class="ic-addr mono-xs">X1: 18.432 MHz Osc</div>
-              </div>
+        <div class="debugger-top-grid">
+          <!-- Z180 CPU & MMU State -->
+          <div id="card-cpu" class="card inspector-card">
+            <div class="card-header">
+              <h2>Z8S180 CPU &amp; MMU</h2>
+              <span id="cpu-mode-badge" class="badge-mini">IM 2 &bull; EI</span>
             </div>
 
-            <div class="pcb-jumpers-bar">
-              <div class="jumper-box">
-                <span class="jumper-title">JP1 Flash Write Protect:</span>
-                <button id="btn-jp1" class="jumper-shunt rd" title="Toggle JP1 between Rd (Read-Only) and Wr (Write Enabled)">
-                  JP1: Rd (Write Protected)
-                </button>
+            <div class="regs-grid mono-sm">
+              <div class="reg-item"><span>PC</span><strong id="reg-pc">0000</strong></div>
+              <div class="reg-item"><span>SP</span><strong id="reg-sp">FFFF</strong></div>
+              <div class="reg-item"><span>AF</span><strong id="reg-af">FFFF</strong></div>
+              <div class="reg-item"><span>BC</span><strong id="reg-bc">FFFF</strong></div>
+              <div class="reg-item"><span>DE</span><strong id="reg-de">FFFF</strong></div>
+              <div class="reg-item"><span>HL</span><strong id="reg-hl">FFFF</strong></div>
+              <div class="reg-item"><span>IX</span><strong id="reg-ix">FFFF</strong></div>
+              <div class="reg-item"><span>IY</span><strong id="reg-iy">FFFF</strong></div>
+              <div class="reg-item"><span>AF'</span><strong id="reg-af2">FFFF</strong></div>
+              <div class="reg-item"><span>BC'</span><strong id="reg-bc2">FFFF</strong></div>
+              <div class="reg-item"><span>DE'</span><strong id="reg-de2">FFFF</strong></div>
+              <div class="reg-item"><span>HL'</span><strong id="reg-hl2">FFFF</strong></div>
+              <div class="reg-item"><span>I / R</span><strong id="reg-ir">00 / 00</strong></div>
+              <div class="reg-item"><span>Flags</span><strong id="reg-flags">SZ5H3PNC</strong></div>
+            </div>
+
+            <!-- Z180 MMU Translation Table -->
+            <div class="mmu-section">
+              <div class="section-subtitle">
+                <span>Z180 MMU Translation (1 MB Physical)</span>
+                <span id="mmu-regs-raw" class="mono-xs">CBAR=80 BBR=00 CBR=F0</span>
               </div>
-              <div class="jumper-box">
-                <span class="jumper-title">JP2 Serial Port B Power:</span>
-                <button id="btn-jp2" class="jumper-shunt" title="Toggle JP2 Serial Port B 5V Power Shunt">
-                  JP2: Open (Powered via Port A)
-                </button>
-              </div>
+              <div id="mmu-bars" class="mmu-table mono-xs"></div>
             </div>
           </div>
+
+          <!-- Scrollable Z80/Z180 Disassembler & Breakpoints -->
+          <div id="card-disasm" class="card inspector-card">
+            <div class="card-header">
+              <h2>Z180 Disassembler</h2>
+              <div class="bp-controls">
+                <button id="btn-disasm-pc" class="btn btn-xs" title="Jump disassembly to current PC">@PC</button>
+                <input type="text" id="disasm-addr-input" class="input-xs mono-xs" placeholder="Addr" maxlength="4" title="Start disassembly at hex address" />
+                <input type="text" id="bp-input" class="input-xs mono-xs" placeholder="BP Hex" maxlength="4" title="Breakpoint hex address" />
+                <button id="btn-add-bp" class="btn btn-xs">+BP</button>
+                <button id="btn-clear-bp" class="btn btn-xs">Clear</button>
+              </div>
+            </div>
+            <div id="disasm-view" class="disasm-list mono-xs"></div>
+          </div>
         </div>
-      </div>
+
+        <!-- Scrollable Full-Range Memory Hex Inspector -->
+        <div id="card-memory" class="card inspector-card">
+          <div class="card-header">
+            <div class="card-title-group">
+              <h2>Memory Hex Inspector</h2>
+              <span id="mem-range-label" class="mono-xs text-muted">$0000 &ndash; $FFFF (64 KB Logical)</span>
+            </div>
+            <div class="mem-controls">
+              <div class="mem-jump-btns">
+                <button class="btn btn-xs" data-mem-jump="0000">$0000</button>
+                <button class="btn btn-xs" data-mem-jump="0100">$0100 (TPA)</button>
+                <button class="btn btn-xs" data-mem-jump="8000">$8000</button>
+                <button class="btn btn-xs" data-mem-jump="C000">$C000</button>
+                <button class="btn btn-xs" data-mem-reg="pc">@PC</button>
+                <button class="btn btn-xs" data-mem-reg="sp">@SP</button>
+                <button class="btn btn-xs" data-mem-reg="hl">@HL</button>
+              </div>
+              <select id="mem-space-select" class="select-xs">
+                <option value="logical">Logical CPU (64 KB)</option>
+                <option value="rom">Physical ROM (512 KB)</option>
+                <option value="ram">Physical SRAM (512 KB)</option>
+              </select>
+              <input type="text" id="mem-addr-input" class="input-xs mono-xs" value="0000" placeholder="Hex Addr" maxlength="5" title="Jump to hex address" />
+            </div>
+          </div>
+
+          <div class="hex-header mono-xs">
+            <span>ADDR</span>
+            <span>+0 +1 +2 +3 +4 +5 +6 +7   +8 +9 +A +B +C +D +E +F</span>
+            <span>ASCII</span>
+          </div>
+          <!-- Virtualized Scrollable Container with Native Scrollbar across all 64KB / 512KB -->
+          <div id="mem-scroll-container" class="hex-scroll-container mono-xs">
+            <div id="mem-scroll-spacer" class="hex-scroll-spacer"></div>
+            <div id="mem-hex-view" class="hex-rows-viewport"></div>
+          </div>
+        </div>
+      </section>
     </section>
 
-    <!-- Right Column: On-Demand Z180 CPU Registers, MMU Inspector, Disassembler & Memory Viewer -->
-    <aside id="side-column" class="side-column hidden">
-      <!-- Z180 CPU & MMU State -->
-      <div id="card-cpu" class="card inspector-card hidden">
+    <!-- Right Column: Always-Visible SC131 Hardware Panels (Enclosure, SDHC, Serial/Supervisor, PCB & Jumpers) -->
+    <aside id="side-column" class="side-column">
+      <!-- Card 1: SC131 Red & Gold Front Panel Enclosure -->
+      <div class="card hardware-card">
         <div class="card-header">
-          <h2>Z8S180 CPU &amp; MMU</h2>
-          <div class="inspector-header-actions">
-            <span id="cpu-mode-badge" class="badge-mini">IM 2 &bull; EI</span>
-            <button class="btn-close-panel" data-close-panel="cpu" title="Hide CPU &amp; MMU Panel">&times;</button>
-          </div>
+          <h2>SC131 Pocket Enclosure</h2>
+          <span class="mono-xs text-muted">Front Panel &amp; LEDs</span>
         </div>
 
-        <div class="regs-grid mono-sm">
-          <div class="reg-item"><span>PC</span><strong id="reg-pc">0000</strong></div>
-          <div class="reg-item"><span>SP</span><strong id="reg-sp">FFFF</strong></div>
-          <div class="reg-item"><span>AF</span><strong id="reg-af">FFFF</strong></div>
-          <div class="reg-item"><span>BC</span><strong id="reg-bc">FFFF</strong></div>
-          <div class="reg-item"><span>DE</span><strong id="reg-de">FFFF</strong></div>
-          <div class="reg-item"><span>HL</span><strong id="reg-hl">FFFF</strong></div>
-          <div class="reg-item"><span>IX</span><strong id="reg-ix">FFFF</strong></div>
-          <div class="reg-item"><span>IY</span><strong id="reg-iy">FFFF</strong></div>
-          <div class="reg-item"><span>AF'</span><strong id="reg-af2">FFFF</strong></div>
-          <div class="reg-item"><span>BC'</span><strong id="reg-bc2">FFFF</strong></div>
-          <div class="reg-item"><span>DE'</span><strong id="reg-de2">FFFF</strong></div>
-          <div class="reg-item"><span>HL'</span><strong id="reg-hl2">FFFF</strong></div>
-          <div class="reg-item"><span>I / R</span><strong id="reg-ir">00 / 00</strong></div>
-          <div class="reg-item"><span>Flags</span><strong id="reg-flags">SZ5H3PNC</strong></div>
-        </div>
+        <div class="sc131-front-panel">
+          <div class="screw screw-tl"></div>
+          <div class="screw screw-tr"></div>
+          <div class="screw screw-bl"></div>
+          <div class="screw screw-br"></div>
 
-        <!-- Z180 MMU Translation Table -->
-        <div class="mmu-section">
-          <div class="section-subtitle">
-            <span>Z180 MMU Translation (1 MB Physical)</span>
-            <span id="mmu-regs-raw" class="mono-xs">CBAR=80 BBR=00 CBR=F0</span>
+          <div class="panel-gold-border">
+            <div class="panel-left-controls">
+              <div class="led-row" title="LED1: Status LED (Orange, Port 0x0E Bit 2 Active Low)">
+                <span id="led-status" class="led led-orange on"></span>
+                <span class="led-label">Status</span>
+              </div>
+              <div class="led-row" title="LED2: Power LED (Green, 5V DC Supply)">
+                <span id="led-power" class="led led-green on"></span>
+                <span class="led-label">Power</span>
+              </div>
+              <div class="led-row" title="LED3: Reset LED (Red, DS1233 Supervisor / SW1 Reset)">
+                <span id="led-reset" class="led led-red"></span>
+                <span class="led-label">Reset</span>
+              </div>
+              <div class="reset-switch-row">
+                <button id="hw-reset-btn" class="tactile-reset-btn" title="Press SW1 Tactile Reset Switch"></button>
+                <span class="led-label">SW1</span>
+              </div>
+            </div>
+
+            <div class="panel-branding">
+              <div class="sc-title">SC131</div>
+              <div class="sc-sub">POCKET COMPUTER</div>
+              <div class="sc-mhz">Z180 &bull; 0.018 GHz</div>
+              <div class="sc-maker">Small Computer Central</div>
+            </div>
           </div>
-          <div id="mmu-bars" class="mmu-table mono-xs"></div>
         </div>
       </div>
 
-      <!-- On-Demand Z80/Z180 Disassembler & Breakpoints -->
-      <div id="card-disasm" class="card inspector-card hidden">
+      <!-- Card 2: Rear Peripherals (MicroSDHC & Serial / DS1233 Supervisor) -->
+      <div class="card hardware-card">
         <div class="card-header">
-          <h2>Z180 Disassembler</h2>
-          <div class="bp-controls">
-            <label class="checkbox-xs" title="Continuously disassemble while CPU is running (otherwise updates on Pause/Step/Refresh)">
-              <input type="checkbox" id="chk-disasm-live" /> Live
-            </label>
-            <button id="btn-disasm-refresh" class="btn btn-xs" title="Disassemble at current PC now">Refresh</button>
-            <input type="text" id="bp-input" class="input-xs mono-xs" placeholder="BP Hex" maxlength="4" />
-            <button id="btn-add-bp" class="btn btn-xs">+BP</button>
-            <button id="btn-clear-bp" class="btn btn-xs">Clear</button>
-            <button class="btn-close-panel" data-close-panel="disasm" title="Hide Disassembler Panel">&times;</button>
+          <h2>MicroSDHC &amp; Serial / Power</h2>
+          <span class="mono-xs text-muted">Rear Panel Ports</span>
+        </div>
+
+        <div class="rear-stack">
+          <div class="rear-section">
+            <div class="rear-title">P1 &bull; SPI MicroSDHC Slot (Port 0x0C / CSIO)</div>
+            <div class="sd-slot-box">
+              <div class="sd-indicator-row">
+                <span id="led-sd-act" class="led led-cyan" title="SPI /CS Active Indicator"></span>
+                <span id="sd-status-text" class="mono-sm">SD0: 68 MB SDHC (8 Slices)</span>
+              </div>
+              <div class="sd-stats mono-xs">
+                <span>Op: <strong id="sd-last-op">IDLE</strong></span>
+                <span>LBA: <strong id="sd-last-lba">0x000000</strong></span>
+                <span>R/W: <strong id="sd-rw-count">0 / 0</strong></span>
+              </div>
+              <div class="sd-btn-row">
+                <label class="btn btn-xs" title="Mount a custom raw .img or .simg SD card image">
+                  Mount .img
+                  <input type="file" id="sd-file-input" accept=".img,.bin,.simg,.dat" hidden />
+                </label>
+                <button id="btn-sd-export" class="btn btn-xs" title="Download active SD card image">Export .img</button>
+                <button id="btn-sd-eject" class="btn btn-xs" title="Eject or Re-insert Micro SD Card">Eject SD</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="rear-section">
+            <div class="rear-title">P3 &amp; P2 &bull; 5V FTDI Serial &amp; DS1233 Supervisor</div>
+            <div class="serial-ports-status mono-xs">
+              <div class="port-stat">
+                <span>P3 Serial A (ASCI0):</span>
+                <strong id="asci0-cfg">115200 8N1</strong>
+                <span id="asci0-rts" class="badge-mini on">RTS</span>
+              </div>
+              <div class="port-stat">
+                <span>P2 Serial B (ASCI1):</span>
+                <strong id="asci1-cfg">115200 8N1</strong>
+              </div>
+              <div class="voltage-control" title="DS1233-5+ EconoReset holds the Z180 in reset if supply voltage drops below 4.7V">
+                <label for="vcc-slider">Vcc Supply: <strong id="vcc-val">5.00V</strong></label>
+                <input type="range" id="vcc-slider" min="4.2" max="5.2" step="0.05" value="5.0" />
+              </div>
+            </div>
           </div>
         </div>
-        <div id="disasm-status-note" class="inspector-note mono-xs">
-          Paused/On-Demand mode (zero CPU overhead while running). Click <strong>Refresh</strong>, <strong>Step</strong>, or check <strong>Live</strong>.
-        </div>
-        <div id="disasm-view" class="disasm-list mono-xs"></div>
       </div>
 
-      <!-- On-Demand Memory Hex Viewer -->
-      <div id="card-memory" class="card inspector-card hidden">
+      <!-- Card 3: Interactive SC131 Motherboard PCB & Jumpers -->
+      <div class="card hardware-card">
         <div class="card-header">
-          <h2>Memory Hex Inspector</h2>
-          <div class="mem-controls">
-            <label class="checkbox-xs" title="Continuously refresh hex dump while CPU is running">
-              <input type="checkbox" id="chk-mem-live" /> Live
-            </label>
-            <button id="btn-mem-refresh" class="btn btn-xs" title="Refresh Hex Dump">Refresh</button>
-            <select id="mem-space-select" class="select-xs">
-              <option value="logical">Logical (64K)</option>
-              <option value="rom">ROM (512K)</option>
-              <option value="ram">SRAM (512K)</option>
-            </select>
-            <input type="text" id="mem-addr-input" class="input-xs mono-xs" value="0000" placeholder="Hex Addr" maxlength="5" />
-            <button class="btn-close-panel" data-close-panel="memory" title="Hide Memory Hex Panel">&times;</button>
+          <h2>SC131 v1.0 Motherboard PCB</h2>
+          <span class="mono-xs text-muted">ICs &amp; Jumpers</span>
+        </div>
+
+        <div class="pcb-board">
+          <div class="pcb-header-row">
+            <span class="pcb-silk">SC131 v1.0 &bull; S. C. Cousins</span>
+            <span class="pcb-silk">101.6 &times; 66.1 mm</span>
+          </div>
+          <div class="pcb-chips-grid-2col">
+            <div class="ic-chip" id="chip-u1">
+              <div class="ic-name">U1 &bull; SST39SF040</div>
+              <div class="ic-desc">512 KB Flash ROM</div>
+              <div class="ic-addr mono-xs">0x00000 &ndash; 0x7FFFF</div>
+              <label class="btn btn-xs ic-upload-btn">
+                Load Custom ROM
+                <input type="file" id="rom-file-input" accept=".rom,.bin,.hex,.upd" hidden />
+              </label>
+            </div>
+
+            <div class="ic-chip" id="chip-u2">
+              <div class="ic-name">U2 &bull; AS6C4008</div>
+              <div class="ic-desc">512 KB Static RAM</div>
+              <div class="ic-addr mono-xs">0x80000 &ndash; 0xFFFFF</div>
+            </div>
+
+            <div class="ic-chip ic-plcc" id="chip-u4">
+              <div class="ic-name">U4 &bull; Z8S18020VSC</div>
+              <div class="ic-desc">Z180 CPU (PLCC-68)</div>
+              <div class="ic-addr mono-xs" id="pcb-phi-label">PHI = 18.432 MHz</div>
+            </div>
+
+            <div class="ic-chip ic-small">
+              <div class="ic-name">U3 &bull; 74AHCT139</div>
+              <div class="ic-desc">A19 &amp; I/O Decoder</div>
+              <div class="ic-addr mono-xs">Y0: I/O 0x00&ndash;0x3F</div>
+            </div>
+
+            <div class="ic-chip ic-small">
+              <div class="ic-name">U5 &bull; 74HCT259</div>
+              <div class="ic-desc">Addressable Latch</div>
+              <div class="ic-addr mono-xs">0x0C=/CS, 0x0E=LED1</div>
+            </div>
+
+            <div class="ic-chip ic-small">
+              <div class="ic-name">U7 &bull; DS1233-5+</div>
+              <div class="ic-desc">EconoReset (&lt;4.7V)</div>
+              <div class="ic-addr mono-xs">X1: 18.432 MHz Osc</div>
+            </div>
+          </div>
+
+          <div class="pcb-jumpers-bar">
+            <div class="jumper-box">
+              <span class="jumper-title">JP1 Flash Protect:</span>
+              <button id="btn-jp1" class="jumper-shunt rd" title="Toggle JP1 between Rd (Read-Only) and Wr (Write Enabled)">
+                JP1: Rd (Write Protected)
+              </button>
+            </div>
+            <div class="jumper-box">
+              <span class="jumper-title">JP2 Port B 5V:</span>
+              <button id="btn-jp2" class="jumper-shunt" title="Toggle JP2 Serial Port B 5V Power Shunt">
+                JP2: Open (Via Port A)
+              </button>
+            </div>
           </div>
         </div>
-        <pre id="mem-hex-view" class="hex-dump mono-xs"></pre>
       </div>
     </aside>
   </main>
