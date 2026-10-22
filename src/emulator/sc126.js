@@ -51,9 +51,18 @@ export class SC126 {
     this.port0C = 0x24; // Quiescent: /RTC_WE = 1 (0x20), /SPI_CS1 = 1 (0x04)
     this.diagLeds = 0x00; // Port 0x0D 8-bit LED bar (L7..L0)
 
+    // SCWorkshop Simulated Peripherals state
+    this.simSwitches = 0x00;
+    this.simLeds = 0x00;
+    this.termRxQueue = [];
+    this.printerText = '';
+    this.screenDirty = true;
+
     this.onSerialTx = options.onSerialTx || null;
     this.onLedChange = options.onLedChange || null;
     this.onSdActivity = options.onSdActivity || null;
+    this.onPrinterOut = options.onPrinterOut || null;
+    this.onScreenWrite = options.onScreenWrite || null;
 
     // Dallas DS1302 Real-Time Clock & NVRAM (U9)
     this.rtc = new DS1302();
@@ -152,6 +161,8 @@ export class SC126 {
       i2cSda: Boolean(this.port0C & 0x80),
       rtcCe: Boolean(this.port0C & 0x10),
       spiCs2: (this.port0C & 0x08) === 0,
+      simLeds: (power && !inReset) ? (this.simLeds & 0xFF) : 0x00,
+      simSwitches: this.simSwitches & 0xFF,
     };
   }
 
@@ -182,6 +193,12 @@ export class SC126 {
 
   readExtIO(port16) {
     const port = port16 & 0xFF;
+    if (port === 0x00) {
+      return this.simSwitches & 0xFF;
+    }
+    if (port === 0x02) {
+      return this.termRxQueue.length > 0 ? this.termRxQueue.shift() : 0x00;
+    }
     if (port === 0x0C) {
       // U8 74HCT244 buffer on Port 0x0C:
       // Bit 7 = I2C_SDA (1 when pulled up), Bit 0 = DS1302 RTC_IN
@@ -199,6 +216,25 @@ export class SC126 {
     const port = port16 & 0xFF;
     const b = val & 0xFF;
 
+    if (port === 0x00) {
+      this.simLeds = b;
+      this.diagLeds = b;
+      this.notifyLeds();
+      return;
+    }
+    if (port === 0x01) {
+      if (this.onSerialTx) this.onSerialTx(0, b);
+      return;
+    }
+    if (port === 0x03) {
+      if (b !== 0x0D) {
+        const ch = (b === 0x0A || (b >= 32 && b <= 126)) ? String.fromCharCode(b) : '.';
+        this.printerText += ch;
+        if (this.onPrinterOut) this.onPrinterOut(b, this.printerText);
+      }
+      return;
+    }
+
     if (port === 0x0C) {
       const prev0C = this.port0C;
       this.port0C = b;
@@ -214,11 +250,58 @@ export class SC126 {
     }
 
     if (port === 0x0D) {
+      this.simLeds = b;
       if (this.diagLeds !== b) {
         this.diagLeds = b;
         this.notifyLeds();
       }
     }
+  }
+
+  /**
+   * Load assembled segments into logical/physical memory
+   */
+  loadAssembledProgram(asmResult, { setPc = true } = {}) {
+    if (this.cpu.ioRegs[Z180_REG.ICR] === 0x00) {
+      this.cpu.ioRegs[Z180_REG.ICR] = 0xC0;
+    }
+    if (
+      this.cpu.ioRegs[Z180_REG.CBAR] === 0xF0 &&
+      this.cpu.ioRegs[Z180_REG.BBR] === 0x00 &&
+      this.cpu.ioRegs[Z180_REG.CBR] === 0x00
+    ) {
+      this.cpu.ioRegs[Z180_REG.CBAR] = 0x80;
+      this.cpu.ioRegs[Z180_REG.BBR] = 0x80;
+      this.cpu.ioRegs[Z180_REG.CBR] = 0x80;
+    }
+
+    for (const seg of asmResult.segments) {
+      for (let i = 0; i < seg.bytes.length; i++) {
+        const logAddr = (seg.addr + i) & 0xFFFF;
+        const b = seg.bytes[i] & 0xFF;
+        const phys = this.cpu.translateAddress(logAddr);
+        if ((phys & 0x80000) === 0) {
+          this.rom[phys & 0x7FFFF] = b;
+        } else {
+          this.ram[phys & 0x7FFFF] = b;
+        }
+      }
+    }
+
+    if (setPc) {
+      if (this.cpu.sp === 0xFFFF) {
+        this.cpu.sp = 0xFE00;
+      } else if (asmResult.origin >= 0x8000) {
+        this.cpu.push16(this.cpu.pc);
+      }
+      this.cpu.pc = asmResult.origin & 0xFFFF;
+      this.cpu.halted = false;
+    }
+  }
+
+  clearPrinter() {
+    this.printerText = '';
+    if (this.onPrinterOut) this.onPrinterOut(0, this.printerText);
   }
 
   sendSerial(ch, data) {

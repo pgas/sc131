@@ -3,36 +3,38 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SC131 &amp; SC126 — Z180 Computer &amp; RC2014 Motherboard Emulator</title>
-  <meta name="description" content="Interactive JavaScript hardware emulator for Stephen C Cousins' SC131 Z180 Pocket Computer and SC126 Z180 RC2014 Motherboard running Wayne Warthen's RomWBW v3.6.0, CP/M 2.2, CP/M 3, Z-System, and Small Computer Monitor S6." />
+  <title>Small Computer Workshop — SC131, SC126 &amp; Z80/Z180 IDE &amp; Hardware Emulator</title>
+  <meta name="description" content="Web-based Small Computer Workshop (SCW) IDE, Z80/Z180 Assembler, Simulator, Disassembler, and Hardware Emulator for Stephen C. Cousins' SC131 Pocket Computer, SC126 RC2014 Motherboard, and Simulated Z80 Computer." />
   <link rel="stylesheet" href="./styles.css" />
 </head>
-<body>
-  <header class="topbar">
+<body class="vscode-body">
+  <!-- Top VS Code Workbench Title & Command Bar -->
+  <header class="topbar vscode-titlebar">
     <div class="brand">
-      <div id="brand-badge" class="brand-badge">SC131</div>
+      <div id="brand-badge" class="brand-badge">SCW</div>
       <div>
         <div class="brand-title-row">
-          <h1 id="brand-title">SC131 Z180 Pocket Computer Emulator</h1>
+          <h1 id="brand-title">Small Computer Workshop &mdash; SC131 / SC126 IDE</h1>
           <span id="status-pill" class="pill pill-running">RUNNING @ 18.432 MHz</span>
         </div>
         <p class="subtitle">
-          <span id="brand-subtitle-text">Zilog Z8S180 @ 18.432 MHz &bull; 512 KB Flash &bull; 512 KB SRAM &bull; SPI SDHC</span> &bull;
-          <a id="brand-doc-link" href="https://smallcomputercentral.com/sc131-z180-pocket-computer/" target="_blank" rel="noopener">Small Computer Central</a>
+          <span id="brand-subtitle-text">Z80 / Z180 Assembler &bull; Simulator &bull; SC131 &amp; SC126 Hardware Emulator</span> &bull;
+          <a id="brand-doc-link" href="https://smallcomputercentral.com/small-computer-workshop/" target="_blank" rel="noopener">Small Computer Central</a>
         </p>
       </div>
     </div>
 
     <div class="topbar-controls">
       <div class="control-group">
-        <label for="machine-select">Hardware Board</label>
-        <select id="machine-select" title="Switch between SC131 Z180 Pocket Computer and SC126 Z180 RC2014 Motherboard">
-          <option value="sc131">SC131 — Z180 Pocket Computer</option>
-          <option value="sc126">SC126 — Z180 RC2014 Motherboard</option>
+        <label for="machine-select">Target Machine</label>
+        <select id="machine-select" title="Switch between SC131 Pocket Computer, SC126 RC2014 Motherboard, and SCWorkshop Simulated Z80">
+          <option value="sc131">SC131 &mdash; Z180 Pocket Computer</option>
+          <option value="sc126">SC126 &mdash; Z180 RC2014 Motherboard</option>
+          <option value="sim_z80">Simulated Z80 &mdash; SCWorkshop Computer</option>
         </select>
       </div>
 
-      <div class="control-group">
+      <div class="control-group" id="firmware-control-group">
         <label for="firmware-select">ROM / OS System</label>
         <select id="firmware-select" title="Select Flash ROM Firmware / OS Image">
           <option id="fw-opt-romwbw" value="romwbw">RomWBW v3.6.0 (SCZ180_sc131_std)</option>
@@ -42,7 +44,7 @@
       </div>
 
       <div class="control-group">
-        <label for="speed-select">CPU Speed</label>
+        <label for="speed-select">Clock Speed</label>
         <select id="speed-select" title="Select Emulation Speed">
           <option value="1">18.432 MHz (1x Real-Time)</option>
           <option value="2">36.864 MHz (2x Turbo)</option>
@@ -51,116 +53,416 @@
         </select>
       </div>
 
-      <div class="button-row">
-        <button id="btn-run-pause" class="btn btn-primary" title="Pause or Resume CPU Execution">Pause</button>
-        <button id="btn-step" class="btn" title="Single-step one Z180 instruction">Step</button>
-        <button id="btn-reset" class="btn btn-danger" title="Press Hardware Tactile Reset Button">Reset (SW1)</button>
-        <button id="btn-toggle-debugger" class="btn btn-toggle active" title="Show or Hide the Debugger below the Terminal">Debugger</button>
+      <!-- SCWorkshop Execution & Build Toolbar -->
+      <div class="button-row exec-toolbar">
+        <button id="btn-assemble" class="btn btn-xs btn-accent" title="Assemble active .asm source file (F7)">&#9881; Assemble</button>
+        <button id="btn-assemble-run" class="btn btn-xs btn-success" title="Assemble, load into memory, and Run (F5)">&#9654; Build &amp; Run</button>
+        <span class="toolbar-sep"></span>
+        <button id="btn-run-pause" class="btn btn-xs btn-primary" title="Run at full clock speed or Pause CPU Execution">Pause</button>
+        <button id="btn-jog" class="btn btn-xs btn-toggle" title="Jog: Medium animated simulation (~600 instructions/sec) with live register &amp; screen updates">Jog</button>
+        <button id="btn-walk" class="btn btn-xs btn-toggle" title="Walk: Slow animated stepping (~12 instructions/sec) highlighting each source line &amp; recording Trace">Walk</button>
+        <button id="btn-step" class="btn btn-xs" title="Step: Execute a single Z80/Z180 instruction (F10)">Step</button>
+        <button id="btn-interrupt" class="btn btn-xs" title="Assert maskable hardware interrupt (/INT0 -> RST $38 in IM 1)">Interrupt</button>
+        <button id="btn-reset" class="btn btn-xs btn-danger" title="Press Hardware Tactile Reset Button">Reset (SW1)</button>
+      </div>
+
+      <!-- VS Code Workbench Layout Toggles -->
+      <div class="button-row layout-toolbar">
+        <button id="btn-toggle-sidebar" class="btn btn-xs btn-toggle active" title="Toggle Left Explorer / Tools Sidebar">Sidebar</button>
+        <button id="btn-toggle-split" class="btn btn-xs btn-toggle" title="Split Workbench Side-by-Side (Code Editor + Terminal)">&#10697; Split View</button>
+        <button id="btn-toggle-debugger" class="btn btn-xs btn-toggle active" title="Toggle Docked Bottom Debugger &amp; Trace Panel">Bottom Panel</button>
+        <button id="btn-toggle-hardware" class="btn btn-xs btn-toggle active" title="Toggle Right Hardware Enclosure &amp; I/O Sidebar">Hardware</button>
       </div>
     </div>
   </header>
 
-  <main class="workspace">
-    <!-- Left Column: Prominent Terminal on Top + Debugger Below Terminal -->
-    <section class="main-column">
-      <!-- Quick Boot & Macro Bar -->
-      <div id="card-quickbar" class="card quickbar-card">
-        <div class="quickbar-row">
-          <span class="quickbar-label">Quick Launch:</span>
-          <button class="btn btn-xs" data-macro="2.0&#13;" title="Boot CP/M 2.2 from MicroSD Slice 0">SD0.0: CP/M 2.2</button>
-          <button class="btn btn-xs" data-macro="2.1&#13;" title="Boot ZSDOS 1.1 from MicroSD Slice 1">SD0.1: ZSDOS</button>
-          <button class="btn btn-xs" data-macro="2.2&#13;" title="Boot CP/M 3.0 from MicroSD Slice 2">SD0.2: CP/M 3</button>
-          <button class="btn btn-xs" data-macro="2.3&#13;" title="Boot Classic Games Slice (Zork, Adventure, Ladder)">SD0.3: Games</button>
-          <button class="btn btn-xs" data-macro="2.4&#13;" title="Boot WordStar 4 &amp; Office Slice">SD0.4: WordStar</button>
-          <button class="btn btn-xs" data-macro="2.5&#13;" title="Boot Turbo Pascal 3.0 Slice">SD0.5: Turbo Pascal</button>
-          <button class="btn btn-xs" data-macro="C&#13;" title="Boot CP/M 2.2 from ROM Disk">ROM CP/M</button>
-          <button class="btn btn-xs" data-macro="Z&#13;" title="Boot Z-System from ROM Disk">ROM Z-System</button>
-          <button class="btn btn-xs" data-macro="B&#13;&#13;" title="Launch Microsoft / NASCOM BASIC 4.7b">BASIC</button>
-          <button class="btn btn-xs" data-macro="T&#13;" title="Launch Tasty BASIC">Tasty BASIC</button>
-          <button class="btn btn-xs" data-macro="F&#13;" title="Launch CamelForth">Forth</button>
-          <button class="btn btn-xs" data-macro="P&#13;" title="Play Built-in 2048 Game">2048 Game</button>
-          <button class="btn btn-xs" data-macro="M&#13;" title="Launch RomWBW System Monitor">Monitor</button>
-          <button class="btn btn-xs" data-macro="S&#13;" title="List SD Card Slices at Boot Loader">Slices (S)</button>
-          <button id="btn-fuzix-launch" class="btn btn-xs" title="Mount Fuzix 0.4 Unix SDHC image and boot to login prompt (login: root)">Fuzix 0.4 Unix</button>
-          <button id="btn-led-demo" class="btn btn-xs btn-accent" title="Launch BASIC and run the hardware LED demo">LED1 Blink Demo</button>
+  <!-- Main VS Code Workbench Container (Activity Bar + Left Sidebar + Center Editor/Split + Right Hardware Sidebar) -->
+  <div class="vscode-workbench">
+    <!-- Far-Left Activity Bar -->
+    <nav class="vscode-activitybar" aria-label="Workbench Activity Bar">
+      <button class="activity-btn active" data-sidebar-view="explorer" title="Explorer: Assembly Examples, OS Quick Launch &amp; Workspace">
+        <span class="activity-icon">&#128193;</span>
+        <span class="activity-label">Explorer</span>
+      </button>
+      <button class="activity-btn" data-sidebar-view="assembler" title="Assembler Build Output &amp; Symbol Table">
+        <span class="activity-icon">&#9881;</span>
+        <span class="activity-label">Symbols</span>
+      </button>
+      <button class="activity-btn" data-sidebar-view="tools" title="SCWorkshop Number Base &amp; ASCII Conversions">
+        <span class="activity-icon">&#128290;</span>
+        <span class="activity-label">Convert</span>
+      </button>
+      <div class="activity-spacer"></div>
+      <button id="activity-split-btn" class="activity-btn" title="Toggle Side-by-Side Split View (Editor + Terminal)">
+        <span class="activity-icon">&#10697;</span>
+        <span class="activity-label">Split</span>
+      </button>
+    </nav>
+
+    <!-- Collapsible Left Sidebar -->
+    <aside id="left-sidebar" class="vscode-left-sidebar">
+      <!-- View 1: Explorer (Examples + OS Quick Launch) -->
+      <div id="sidebar-view-explorer" class="sidebar-view">
+        <div class="sidebar-header">
+          <span>EXPLORER &mdash; SCWORKSHOP</span>
+          <button id="btn-new-asm" class="btn btn-xs" title="Create a new blank .asm template">+ New .asm</button>
+        </div>
+
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">SCWorkshop Examples (Simulated Z80)</div>
+          <div id="scw-examples-sim" class="file-tree-list"></div>
+        </div>
+
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">SCMonitor &amp; Z180 Apps ($8000 RAM)</div>
+          <div id="scw-examples-scm" class="file-tree-list"></div>
+        </div>
+
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">Workspace File Actions</div>
+          <div class="sidebar-btn-grid">
+            <label class="btn btn-xs" title="Open local .asm source file from disk">
+              Open .asm
+              <input type="file" id="asm-file-input" accept=".asm,.z80,.txt,.inc" hidden />
+            </label>
+            <button id="btn-download-asm" class="btn btn-xs" title="Download current .asm source code">Save .asm</button>
+            <button id="btn-download-hex" class="btn btn-xs" title="Download assembled Intel HEX (.hex) file">Save .hex</button>
+            <button id="btn-download-lst" class="btn btn-xs" title="Download assembled Listing (.lst) file">Save .lst</button>
+          </div>
+        </div>
+
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">Hardware OS &amp; ROM Quick Launch</div>
+          <div class="sidebar-quicklaunch-note mono-xs text-muted">
+            One-click boot on SC131 / SC126:
+          </div>
+          <div class="sidebar-quick-grid">
+            <button class="btn btn-xs" data-macro="2.0&#13;">SD0.0: CP/M 2.2</button>
+            <button class="btn btn-xs" data-macro="2.1&#13;">SD0.1: ZSDOS</button>
+            <button class="btn btn-xs" data-macro="2.2&#13;">SD0.2: CP/M 3</button>
+            <button class="btn btn-xs" data-macro="2.3&#13;">SD0.3: Games</button>
+            <button class="btn btn-xs" data-macro="2.4&#13;">SD0.4: WordStar</button>
+            <button class="btn btn-xs" data-macro="2.5&#13;">SD0.5: Pascal</button>
+            <button class="btn btn-xs" data-macro="B&#13;&#13;">ROM BASIC</button>
+            <button class="btn btn-xs" data-macro="F&#13;">CamelForth</button>
+          </div>
         </div>
       </div>
 
-      <!-- Dual VT100 / ANSI / Televideo Serial Terminal Card -->
-      <div class="card terminal-card">
-        <div class="card-header terminal-header">
-          <div class="terminal-tabs">
-            <button id="tab-asci0" class="term-tab active">
-              Serial Port A (ASCI0 Console)
-              <span id="txrx-0" class="activity-dot"></span>
-            </button>
-            <button id="tab-asci1" class="term-tab">
-              Serial Port B (ASCI1 Aux)
-              <span id="txrx-1" class="activity-dot"></span>
-            </button>
+      <!-- View 2: Assembler & Symbol Table -->
+      <div id="sidebar-view-assembler" class="sidebar-view hidden">
+        <div class="sidebar-header">
+          <span>ASSEMBLER &amp; SYMBOLS</span>
+        </div>
+
+        <div class="sidebar-section">
+          <div class="asm-summary-card mono-xs">
+            <div class="asm-summary-row"><span>Status:</span><strong id="asm-stat-badge" class="text-ok">Ready</strong></div>
+            <div class="asm-summary-row"><span>Target:</span><strong id="asm-stat-target">Simulated_Z80</strong></div>
+            <div class="asm-summary-row"><span>Origin:</span><strong id="asm-stat-origin">$0000</strong></div>
+            <div class="asm-summary-row"><span>Size:</span><strong id="asm-stat-size">0 bytes</strong></div>
           </div>
 
-          <div class="terminal-toolbar">
-            <select id="term-size-select" class="select-xs" title="Terminal Display Size">
-              <option value="sm">Compact (736&times;466)</option>
-              <option value="md">Medium (816&times;516)</option>
-              <option value="lg" selected>Large (896&times;566)</option>
-              <option value="xl">Extra Large (1056&times;666)</option>
-            </select>
-            <select id="theme-select" class="select-xs" title="Terminal Color Theme">
-              <option value="amber">Amber CRT</option>
-              <option value="green">Green Phosphor</option>
-              <option value="modern">Modern Crisp</option>
-            </select>
-            <label class="checkbox-xs" title="Map Arrow Keys to WordStar Diamond (^E/^X/^S/^D)">
-              <input type="checkbox" id="chk-wordstar" /> WordStar Keys
-            </label>
-            <label class="checkbox-xs" title="Toggle CRT Scanline Overlay">
-              <input type="checkbox" id="chk-scanlines" checked /> Scanlines
-            </label>
-            <button id="btn-paste" class="btn btn-xs" title="Paste Text into Serial Port">Paste</button>
-            <button id="btn-copy-screen" class="btn btn-xs" title="Copy Terminal Screen Text">Copy</button>
-            <button id="btn-clear-term" class="btn btn-xs" title="Clear Terminal Display">Clear</button>
+          <div class="sidebar-btn-stack">
+            <button id="btn-side-assemble" class="btn btn-xs btn-accent">&#9881; Assemble Only (F7)</button>
+            <button id="btn-side-load-mem" class="btn btn-xs">&#128229; Load into Memory</button>
+            <button id="btn-side-build-run" class="btn btn-xs btn-success">&#9654; Assemble, Load &amp; Run (F5)</button>
+            <button id="btn-side-send-scm" class="btn btn-xs" title="Send Intel HEX records directly to Small Computer Monitor serial input">&#128228; Send Intel HEX to Serial</button>
           </div>
         </div>
 
-        <div class="terminal-canvas-wrap">
-          <div class="terminal-viewport">
-            <canvas id="term-canvas-0"></canvas>
-            <canvas id="term-canvas-1" class="hidden"></canvas>
-            <div id="term-scrollbar" class="term-scrollbar" title="Scroll terminal history">
-              <div id="term-scroll-spacer" class="term-scroll-spacer"></div>
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">Symbol Table (Click to Jump)</div>
+          <div id="sidebar-symbols-list" class="symbols-list mono-xs"></div>
+        </div>
+      </div>
+
+      <!-- View 3: SCWorkshop Number Conversions Tool -->
+      <div id="sidebar-view-tools" class="sidebar-view hidden">
+        <div class="sidebar-header">
+          <span>TOOLS &mdash; CONVERSIONS</span>
+        </div>
+
+        <div class="sidebar-section">
+          <p class="mono-xs text-muted" style="margin-bottom:8px;">
+            Interactive SCWorkshop base converter (type in any box):
+          </p>
+          <div class="conv-field">
+            <label for="conv-hex">Hexadecimal ($0000&ndash;$FFFF)</label>
+            <input type="text" id="conv-hex" class="mono-sm" value="0041" maxlength="4" />
+          </div>
+          <div class="conv-field">
+            <label for="conv-dec">Unsigned Decimal (0&ndash;65535)</label>
+            <input type="text" id="conv-dec" class="mono-sm" value="65" />
+          </div>
+          <div class="conv-field">
+            <label for="conv-signed">Signed 16-Bit (-32768&ndash;32767)</label>
+            <input type="text" id="conv-signed" class="mono-sm" value="65" />
+          </div>
+          <div class="conv-field">
+            <label for="conv-bin-hi">Binary High Byte (Bits 15..8)</label>
+            <input type="text" id="conv-bin-hi" class="mono-sm" value="00000000" maxlength="8" />
+          </div>
+          <div class="conv-field">
+            <label for="conv-bin-lo">Binary Low Byte (Bits 7..0)</label>
+            <input type="text" id="conv-bin-lo" class="mono-sm" value="01000001" maxlength="8" />
+          </div>
+          <div class="conv-field">
+            <label for="conv-ascii">ASCII Character (Low Byte)</label>
+            <input type="text" id="conv-ascii" class="mono-sm" value="A" maxlength="1" />
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Center Workbench Column (Tabbed Editor / Terminal + Split View + Docked Bottom Panel) -->
+    <main class="main-column vscode-center-column">
+      <!-- Workbench Editor / Terminal Tab Bar -->
+      <div class="vscode-editor-tabs-bar">
+        <div class="vscode-tabs" role="tablist">
+          <button class="vscode-tab active" data-center-tab="terminal" title="Dual VT100 / ANSI / Televideo Serial Terminal">
+            <span class="tab-dot"></span> Serial Terminal (ASCI0/1)
+          </button>
+          <button class="vscode-tab" data-center-tab="editor" title="Z80 / Z180 Assembly Source Editor">
+            <span class="tab-icon">&#128221;</span> <span id="tab-editor-filename">Count.asm</span>
+          </button>
+          <button class="vscode-tab" data-center-tab="listing" title="Assembled Address &amp; Byte Listing (Listing.txt)">
+            Listing.txt
+          </button>
+          <button class="vscode-tab" data-center-tab="hexout" title="Generated Intel HEX, Memory Dump &amp; Symbols">
+            IntelHex.hex
+          </button>
+          <button class="vscode-tab" data-center-tab="peripherals" title="SCWorkshop Memory-Mapped Screen ($4000) &amp; Line Printer (Port $03)">
+            Sim Screen &amp; Printer
+          </button>
+        </div>
+
+        <div class="vscode-tab-actions">
+          <span id="walk-step-indicator" class="mono-xs text-accent hidden"></span>
+          <button id="btn-split-editor-term" class="btn btn-xs" title="Show Code Editor and Serial Terminal side-by-side">
+            &#10697; Split Editor + Terminal
+          </button>
+        </div>
+      </div>
+
+      <!-- Center Workbench Split Container (hosts Editor panes + Terminal pane with zero floating windows) -->
+      <div id="workbench-panes" class="workbench-panes">
+        <!-- Pane A: Serial Terminal Pane (Visible when 'terminal' tab active OR in Split View) -->
+        <div id="pane-terminal" class="workbench-pane active-pane">
+          <!-- Quick Boot & Macro Bar -->
+          <div id="card-quickbar" class="card quickbar-card">
+            <div class="quickbar-row">
+              <span class="quickbar-label">Quick Launch:</span>
+              <button class="btn btn-xs" data-macro="2.0&#13;" title="Boot CP/M 2.2 from MicroSD Slice 0">SD0.0: CP/M 2.2</button>
+              <button class="btn btn-xs" data-macro="2.1&#13;" title="Boot ZSDOS 1.1 from MicroSD Slice 1">SD0.1: ZSDOS</button>
+              <button class="btn btn-xs" data-macro="2.2&#13;" title="Boot CP/M 3.0 from MicroSD Slice 2">SD0.2: CP/M 3</button>
+              <button class="btn btn-xs" data-macro="2.3&#13;" title="Boot Classic Games Slice (Zork, Adventure, Ladder)">SD0.3: Games</button>
+              <button class="btn btn-xs" data-macro="2.4&#13;" title="Boot WordStar 4 &amp; Office Slice">SD0.4: WordStar</button>
+              <button class="btn btn-xs" data-macro="2.5&#13;" title="Boot Turbo Pascal 3.0 Slice">SD0.5: Turbo Pascal</button>
+              <button class="btn btn-xs" data-macro="C&#13;" title="Boot CP/M 2.2 from ROM Disk">ROM CP/M</button>
+              <button class="btn btn-xs" data-macro="Z&#13;" title="Boot Z-System from ROM Disk">ROM Z-System</button>
+              <button class="btn btn-xs" data-macro="B&#13;&#13;" title="Launch Microsoft / NASCOM BASIC 4.7b">BASIC</button>
+              <button class="btn btn-xs" data-macro="T&#13;" title="Launch Tasty BASIC">Tasty BASIC</button>
+              <button class="btn btn-xs" data-macro="F&#13;" title="Launch CamelForth">Forth</button>
+              <button class="btn btn-xs" data-macro="P&#13;" title="Play Built-in 2048 Game">2048 Game</button>
+              <button class="btn btn-xs" data-macro="M&#13;" title="Launch RomWBW System Monitor">Monitor</button>
+              <button class="btn btn-xs" data-macro="S&#13;" title="List SD Card Slices at Boot Loader">Slices (S)</button>
+              <button id="btn-fuzix-launch" class="btn btn-xs" title="Mount Fuzix 0.4 Unix SDHC image and boot to login prompt (login: root)">Fuzix 0.4 Unix</button>
+              <button id="btn-led-demo" class="btn btn-xs btn-accent" title="Launch BASIC and run the hardware LED demo">LED1 Blink Demo</button>
+            </div>
+          </div>
+
+          <!-- Dual VT100 / ANSI / Televideo Serial Terminal Card -->
+          <div class="card terminal-card">
+            <div class="card-header terminal-header">
+              <div class="terminal-tabs">
+                <button id="tab-asci0" class="term-tab active">
+                  Serial Port A (ASCI0 Console)
+                  <span id="txrx-0" class="activity-dot"></span>
+                </button>
+                <button id="tab-asci1" class="term-tab">
+                  Serial Port B (ASCI1 Aux)
+                  <span id="txrx-1" class="activity-dot"></span>
+                </button>
+              </div>
+
+              <div class="terminal-toolbar">
+                <select id="term-size-select" class="select-xs" title="Terminal Display Size">
+                  <option value="sm">Compact (736&times;466)</option>
+                  <option value="md">Medium (816&times;516)</option>
+                  <option value="lg" selected>Large (896&times;566)</option>
+                  <option value="xl">Extra Large (1056&times;666)</option>
+                </select>
+                <select id="theme-select" class="select-xs" title="Terminal Color Theme">
+                  <option value="amber">Amber CRT</option>
+                  <option value="green">Green Phosphor</option>
+                  <option value="modern">Modern Crisp</option>
+                </select>
+                <label class="checkbox-xs" title="Map Arrow Keys to WordStar Diamond (^E/^X/^S/^D)">
+                  <input type="checkbox" id="chk-wordstar" /> WordStar Keys
+                </label>
+                <label class="checkbox-xs" title="Toggle CRT Scanline Overlay">
+                  <input type="checkbox" id="chk-scanlines" checked /> Scanlines
+                </label>
+                <button id="btn-paste" class="btn btn-xs" title="Paste Text into Serial Port">Paste</button>
+                <button id="btn-copy-screen" class="btn btn-xs" title="Copy Terminal Screen Text">Copy</button>
+                <button id="btn-clear-term" class="btn btn-xs" title="Clear Terminal Display">Clear</button>
+              </div>
+            </div>
+
+            <div class="terminal-canvas-wrap">
+              <div class="terminal-viewport">
+                <canvas id="term-canvas-0"></canvas>
+                <canvas id="term-canvas-1" class="hidden"></canvas>
+                <div id="term-scrollbar" class="term-scrollbar" title="Scroll terminal history">
+                  <div id="term-scroll-spacer" class="term-scroll-spacer"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="terminal-footer mono-xs">
+              <span>Click inside the terminal to type &bull; 80&times;25 FTDI Serial Console &amp; Simulated Port $01/$02</span>
+              <span id="perf-counter">18.43 MHz &bull; 0 cycles</span>
             </div>
           </div>
         </div>
 
-        <div class="terminal-footer mono-xs">
-          <span>Click inside the terminal to type &bull; Standard 80&times;25 115200 8N1 FTDI Serial Console</span>
-          <span id="perf-counter">18.43 MHz &bull; 0 cycles</span>
+        <!-- Pane B: Z80 / Z180 Code Editor (.asm) Pane -->
+        <div id="pane-editor" class="workbench-pane hidden">
+          <div class="card editor-card">
+            <div class="editor-toolbar">
+              <div class="editor-toolbar-left">
+                <label for="example-select" class="mono-xs text-muted">Example:</label>
+                <select id="example-select" class="select-xs" title="Load a bundled SCWorkshop or SCMonitor example"></select>
+                <span id="editor-target-badge" class="badge-mini">#TARGET Simulated_Z80</span>
+              </div>
+              <div class="editor-toolbar-right">
+                <button id="btn-editor-assemble" class="btn btn-xs btn-accent" title="Assemble source code (F7)">&#9881; Assemble (F7)</button>
+                <button id="btn-editor-load" class="btn btn-xs" title="Assemble and write bytes to target memory">Load to Memory</button>
+                <button id="btn-editor-run" class="btn btn-xs btn-success" title="Assemble, load into memory, set PC to origin, and Run (F5)">&#9654; Assemble &amp; Run (F5)</button>
+                <button id="btn-editor-walk" class="btn btn-xs" title="Assemble, load into memory, and start animated Walk stepping">&#128694; Assemble &amp; Walk</button>
+                <button id="btn-editor-scm-hex" class="btn btn-xs" title="Send Intel HEX over Serial to Small Computer Monitor">Send HEX to SCM</button>
+              </div>
+            </div>
+
+            <div id="asm-active-line-banner" class="asm-exec-banner mono-xs hidden">
+              <span>&#9654; Executing Line <strong id="asm-exec-line-num">1</strong> (PC = <strong id="asm-exec-pc">$0000</strong>):</span>
+              <code id="asm-exec-line-code"></code>
+            </div>
+
+            <div class="code-editor-container">
+              <div id="asm-line-gutter" class="code-line-gutter mono-sm">1</div>
+              <textarea
+                id="asm-editor-textarea"
+                class="code-editor-textarea mono-sm"
+                spellcheck="false"
+                autocapitalize="off"
+                autocomplete="off"
+                 autocorrect="off"
+              ></textarea>
+            </div>
+
+            <div class="editor-statusbar mono-xs">
+              <span id="editor-status-msg">Ready &bull; Press F7 to Assemble or F5 to Assemble &amp; Run</span>
+              <span id="editor-cursor-pos">Ln 1, Col 1</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pane C: Assembler Listing (Listing.txt) Pane -->
+        <div id="pane-listing" class="workbench-pane hidden">
+          <div class="card editor-card">
+            <div class="editor-toolbar">
+              <div class="editor-toolbar-left">
+                <strong class="mono-sm">Listing.txt &mdash; Interactive Assembler Listing</strong>
+                <span class="mono-xs text-muted">(Click any address row to toggle a Breakpoint &bull; Current PC highlighted)</span>
+              </div>
+              <div class="editor-toolbar-right">
+                <button id="btn-copy-listing" class="btn btn-xs">Copy Listing</button>
+              </div>
+            </div>
+            <div id="listing-view" class="listing-interactive-view mono-xs"></div>
+          </div>
+        </div>
+
+        <!-- Pane D: IntelHex.hex & Memory.txt & Symbols.txt Output Pane -->
+        <div id="pane-hexout" class="workbench-pane hidden">
+          <div class="card editor-card">
+            <div class="editor-toolbar">
+              <div class="editor-toolbar-left">
+                <strong class="mono-sm">Assembler Outputs: IntelHex.hex &bull; Memory.txt &bull; Symbols.txt</strong>
+              </div>
+              <div class="editor-toolbar-right">
+                <button id="btn-copy-intelhex" class="btn btn-xs">Copy Intel HEX</button>
+                <button id="btn-send-intelhex-term" class="btn btn-xs btn-accent">Send Intel HEX to Serial</button>
+              </div>
+            </div>
+            <div class="hexout-split-grid">
+              <div class="hexout-box">
+                <div class="hexout-box-title mono-xs">IntelHex.hex</div>
+                <pre id="intelhex-output" class="output-pre mono-xs"></pre>
+              </div>
+              <div class="hexout-box">
+                <div class="hexout-box-title mono-xs">Memory.txt &amp; Symbols.txt</div>
+                <pre id="memtxt-output" class="output-pre mono-xs"></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pane E: SCWorkshop Simulated Screen ($4000-$47FF) & Line Printer (Port $03) -->
+        <div id="pane-peripherals" class="workbench-pane hidden">
+          <div class="card editor-card">
+            <div class="editor-toolbar">
+              <div class="editor-toolbar-left">
+                <strong class="mono-sm">SCWorkshop Simulated Peripherals</strong>
+                <span class="mono-xs text-muted">Memory-Mapped Screen ($4000&ndash;$47FF, 64&times;32) &amp; Line Printer (Port $03)</span>
+              </div>
+              <div class="editor-toolbar-right">
+                <button id="btn-clear-sim-screen" class="btn btn-xs">Clear Screen ($4000)</button>
+                <button id="btn-clear-sim-printer" class="btn btn-xs">Clear Printer ($03)</button>
+              </div>
+            </div>
+            <div class="peripherals-split-grid">
+              <div class="sim-screen-box">
+                <div class="hexout-box-title mono-xs">Memory-Mapped Character Display ($4000&ndash;$47FF &bull; 64 cols &times; 32 rows)</div>
+                <pre id="sim-screen-view" class="sim-screen-crt mono-xs"></pre>
+              </div>
+              <div class="sim-printer-box">
+                <div class="hexout-box-title mono-xs">Simulated Line Printer Output (Port $03)</div>
+                <pre id="sim-printer-view" class="sim-printer-paper mono-xs"></pre>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- Debugger Section Below the Terminal -->
-      <section id="debugger-section" class="debugger-section">
+      <!-- Docked Bottom Panel (CPU & MMU, Disassembler, Memory Hex, Simulation Trace, Assembler Output) -->
+      <section id="debugger-section" class="debugger-section vscode-bottom-panel">
         <div class="debugger-topbar card">
-          <div class="card-title-group">
-            <h2>Z8S180 Hardware Debugger &amp; Memory Inspector</h2>
-            <span class="mono-xs text-muted">(Updates on Pause/Step/Refresh, or enable Live)</span>
+          <div class="bottom-panel-tabs">
+            <button class="bottom-tab active" data-bottom-tab="all">All Debugger Views</button>
+            <button class="bottom-tab" data-bottom-tab="cpu">CPU &amp; MMU</button>
+            <button class="bottom-tab" data-bottom-tab="disasm">Disassembler</button>
+            <button class="bottom-tab" data-bottom-tab="memory">Memory Hex</button>
+            <button class="bottom-tab" data-bottom-tab="trace">Simulation Trace (<span id="trace-count">0</span>)</button>
+            <button class="bottom-tab" data-bottom-tab="problems">Assembler Output (<span id="problems-count">0</span>)</button>
           </div>
           <div class="debugger-actions">
             <label class="checkbox-xs" title="Continuously update CPU &amp; MMU, Disassembler &amp; Memory Hex while CPU is running">
-              <input type="checkbox" id="chk-debugger-live" /> Live Updates While Running
+              <input type="checkbox" id="chk-debugger-live" /> Live Updates
             </label>
-            <button id="btn-debugger-refresh" class="btn btn-xs btn-accent" title="Snapshot current CPU, Disassembler, and Memory state now">Refresh Snapshot</button>
-            <button id="btn-hide-debugger" class="btn btn-xs" title="Hide Debugger Section">Hide Debugger</button>
+            <button id="btn-debugger-refresh" class="btn btn-xs btn-accent" title="Snapshot current CPU, Disassembler, and Memory state now">Refresh</button>
+            <button id="btn-clear-trace" class="btn btn-xs" title="Clear Simulation Trace buffer">Clear Trace</button>
+            <button id="btn-hide-debugger" class="btn btn-xs" title="Hide Docked Bottom Panel">&times;</button>
           </div>
         </div>
 
-        <div class="debugger-top-grid">
+        <div id="debugger-top-grid" class="debugger-top-grid">
           <!-- Z180 CPU & MMU State -->
           <div id="card-cpu" class="card inspector-card">
             <div class="card-header">
-              <h2>Z8S180 CPU &amp; MMU</h2>
+              <h2>Z80 / Z8S180 CPU &amp; MMU</h2>
               <span id="cpu-mode-badge" class="badge-mini">IM 2 &bull; EI</span>
             </div>
 
@@ -184,7 +486,7 @@
             <!-- Z180 MMU Translation Table -->
             <div class="mmu-section">
               <div class="section-subtitle">
-                <span>Z180 MMU Translation (1 MB Physical)</span>
+                <span>Memory Map &amp; Z180 MMU Translation</span>
                 <span id="mmu-regs-raw" class="mono-xs">CBAR=80 BBR=00 CBR=F0</span>
               </div>
               <div id="mmu-bars" class="mmu-table mono-xs"></div>
@@ -194,7 +496,7 @@
           <!-- Scrollable Z80/Z180 Disassembler & Breakpoints -->
           <div id="card-disasm" class="card inspector-card">
             <div class="card-header">
-              <h2>Z180 Disassembler</h2>
+              <h2>Z80 / Z180 Disassembler</h2>
               <div class="bp-controls">
                 <button id="btn-disasm-pc" class="btn btn-xs" title="Jump disassembly to current PC">@PC</button>
                 <input type="text" id="disasm-addr-input" class="input-xs mono-xs" placeholder="Addr" maxlength="4" title="Start disassembly at hex address" />
@@ -218,7 +520,8 @@
               <div class="mem-jump-btns">
                 <button class="btn btn-xs" data-mem-jump="0000">$0000</button>
                 <button class="btn btn-xs" data-mem-jump="0100">$0100 (TPA)</button>
-                <button class="btn btn-xs" data-mem-jump="8000">$8000</button>
+                <button class="btn btn-xs" data-mem-jump="4000">$4000 (Screen)</button>
+                <button class="btn btn-xs" data-mem-jump="8000">$8000 (Apps)</button>
                 <button class="btn btn-xs" data-mem-jump="C000">$C000</button>
                 <button class="btn btn-xs" data-mem-reg="pc">@PC</button>
                 <button class="btn btn-xs" data-mem-reg="sp">@SP</button>
@@ -244,11 +547,88 @@
             <div id="mem-hex-view" class="hex-rows-viewport"></div>
           </div>
         </div>
-      </section>
-    </section>
 
-    <!-- Right Column: Always-Visible Hardware Panels (SC131 or SC126) -->
-    <aside id="side-column" class="side-column">
+        <!-- Simulation Trace Card (SCWorkshop Instruction Trace) -->
+        <div id="card-trace" class="card inspector-card hidden">
+          <div class="card-header">
+            <div class="card-title-group">
+              <h2>SCWorkshop Simulation Trace</h2>
+              <span class="mono-xs text-muted">Recorded during Step, Walk, and Jog modes</span>
+            </div>
+          </div>
+          <div class="trace-header mono-xs">
+            <span>STEP</span>
+            <span>PC</span>
+            <span>BYTES</span>
+            <span>INSTRUCTION</span>
+            <span>AF</span>
+            <span>BC</span>
+            <span>DE</span>
+            <span>HL</span>
+            <span>SP</span>
+            <span>FLAGS</span>
+          </div>
+          <div id="trace-view" class="trace-list mono-xs"></div>
+        </div>
+
+        <!-- Assembler Problems & Build Output Card -->
+        <div id="card-problems" class="card inspector-card hidden">
+          <div class="card-header">
+            <h2>Assembler Build Output &amp; Diagnostics</h2>
+          </div>
+          <div id="problems-view" class="problems-list mono-xs"></div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Right Column: Hardware Enclosure, I/O Ports & Peripherals Sidebar -->
+    <aside id="side-column" class="side-column vscode-right-sidebar">
+      <!-- Card 0: SCWorkshop Simulated I/O Ports (Port $00 LEDs & Input Switches) -->
+      <div id="hw-sim-io" class="card hardware-card">
+        <div class="card-header">
+          <h2>SCWorkshop Simulated I/O</h2>
+          <span class="mono-xs text-muted">Port $00 LEDs &amp; Switches</span>
+        </div>
+
+        <div class="scw-io-panel">
+          <!-- Output Port $00 (8 LEDs L7..L0) -->
+          <div class="sc126-led-bar-box">
+            <div class="sc126-box-header mono-xs">
+              <span>Output Port $00 &bull; 8x LEDs</span>
+              <strong id="sim-out-hex">$00 (00000000)</strong>
+            </div>
+            <div class="sc126-led-bar">
+              <div class="diag-led-cell"><span id="sim-out-led-7" class="led led-red"></span><small>D7</small></div>
+              <div class="diag-led-cell"><span id="sim-out-led-6" class="led led-red"></span><small>D6</small></div>
+              <div class="diag-led-cell"><span id="sim-out-led-5" class="led led-red"></span><small>D5</small></div>
+              <div class="diag-led-cell"><span id="sim-out-led-4" class="led led-red"></span><small>D4</small></div>
+              <div class="diag-led-cell"><span id="sim-out-led-3" class="led led-red"></span><small>D3</small></div>
+              <div class="diag-led-cell"><span id="sim-out-led-2" class="led led-red"></span><small>D2</small></div>
+              <div class="diag-led-cell"><span id="sim-out-led-1" class="led led-red"></span><small>D1</small></div>
+              <div class="diag-led-cell"><span id="sim-out-led-0" class="led led-red"></span><small>D0</small></div>
+            </div>
+          </div>
+
+          <!-- Input Port $00 (8 Interactive Toggle Switches S7..S0) -->
+          <div class="sc126-led-bar-box" style="margin-top:8px;">
+            <div class="sc126-box-header mono-xs">
+              <span>Input Port $00 &bull; 8x Switches (Click)</span>
+              <strong id="sim-in-hex">$00 (00000000)</strong>
+            </div>
+            <div id="sim-switch-bar" class="sc126-led-bar">
+              <button type="button" class="sim-sw-btn" data-sw-bit="7"><span class="sw-lever">0</span><small>S7</small></button>
+              <button type="button" class="sim-sw-btn" data-sw-bit="6"><span class="sw-lever">0</span><small>S6</small></button>
+              <button type="button" class="sim-sw-btn" data-sw-bit="5"><span class="sw-lever">0</span><small>S5</small></button>
+              <button type="button" class="sim-sw-btn" data-sw-bit="4"><span class="sw-lever">0</span><small>S4</small></button>
+              <button type="button" class="sim-sw-btn" data-sw-bit="3"><span class="sw-lever">0</span><small>S3</small></button>
+              <button type="button" class="sim-sw-btn" data-sw-bit="2"><span class="sw-lever">0</span><small>S2</small></button>
+              <button type="button" class="sim-sw-btn" data-sw-bit="1"><span class="sw-lever">0</span><small>S1</small></button>
+              <button type="button" class="sim-sw-btn" data-sw-bit="0"><span class="sw-lever">0</span><small>S0</small></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Card 1A: SC131 Red & Gold Front Panel Enclosure -->
       <div id="hw-front-sc131" class="card hardware-card">
         <div class="card-header">
@@ -361,7 +741,7 @@
       </div>
 
       <!-- Card 2: Peripherals (MicroSDHC & Serial / DS1233 Supervisor) -->
-      <div class="card hardware-card">
+      <div id="hw-card-sd" class="card hardware-card">
         <div class="card-header">
           <h2>MicroSDHC &amp; Serial / Power</h2>
           <span class="mono-xs text-muted">On-Board Peripherals</span>
@@ -413,7 +793,7 @@
       </div>
 
       <!-- Card 3: Interactive Motherboard PCB & Jumpers -->
-      <div class="card hardware-card">
+      <div id="hw-card-pcb" class="card hardware-card">
         <div class="card-header">
           <h2 id="pcb-card-title">SC131 v1.0 Motherboard PCB</h2>
           <span class="mono-xs text-muted">ICs &amp; Jumpers</span>
@@ -500,35 +880,44 @@
 
             <div class="ic-chip ic-small">
               <div class="ic-name">U6/U8 &bull; HCT273/244</div>
-              <div class="ic-desc">System I/O Port</div>
-              <div class="ic-addr mono-xs">Port 0x0C (SPI/RTC/I2C)</div>
+              <div class="ic-desc">System Port 0x0C</div>
+              <div class="ic-addr mono-xs">RTC, I2C, /CS1, /CS2</div>
             </div>
 
             <div class="ic-chip ic-small">
               <div class="ic-name">U9 &bull; DS1302+</div>
-              <div class="ic-desc">RTC + 31B NVRAM</div>
-              <div class="ic-addr mono-xs">BT1 CR2032 Backed</div>
+              <div class="ic-desc">RTC &amp; 31B NVRAM</div>
+              <div class="ic-addr mono-xs">32.768 kHz Crystal</div>
             </div>
           </div>
 
-          <div class="pcb-jumpers-bar">
-            <div class="jumper-box">
-              <span class="jumper-title">JP1 Flash Protect:</span>
-              <button id="btn-jp1" class="jumper-shunt rd" title="Toggle JP1 between Rd (Read-Only) and Wr (Write Enabled)">
-                JP1: Rd (Write Protected)
-              </button>
-            </div>
-            <div class="jumper-box">
-              <span class="jumper-title">JP2 Port B 5V:</span>
-              <button id="btn-jp2" class="jumper-shunt" title="Toggle JP2 Serial Port B 5V Power Shunt">
-                JP2: Open (Via Port A)
-              </button>
-            </div>
+          <div class="pcb-jumpers">
+            <button id="btn-jp1" class="jumper-btn rd" title="JP1: Flash ROM Write Protect Jumper">
+              JP1: Rd (Write Protected)
+            </button>
+            <button id="btn-jp2" class="jumper-btn" title="JP2: Power via Serial Port B">
+              JP2: Open (Via Port A)
+            </button>
           </div>
         </div>
       </div>
     </aside>
-  </main>
+  </div>
+
+  <!-- VS Code Style Status Bar -->
+  <footer class="vscode-statusbar mono-xs">
+    <div class="statusbar-left">
+      <span id="sb-machine" class="sb-item sb-badge">SC131 Pocket Computer</span>
+      <span id="sb-mode" class="sb-item">Mode: RUN</span>
+      <span id="sb-pc" class="sb-item">PC: $0000</span>
+      <span id="sb-asm" class="sb-item">Assembler: Ready</span>
+    </div>
+    <div class="statusbar-right">
+      <span id="sb-split" class="sb-item">View: Single Pane</span>
+      <span id="sb-serial" class="sb-item">ASCI0: 115200 8N1</span>
+      <span class="sb-item">Small Computer Workshop Web IDE v2.0</span>
+    </div>
+  </footer>
 
   <script type="module" src="./src/ui/app.js"></script>
 </body>

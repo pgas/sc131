@@ -122,6 +122,7 @@ export class Z180 {
    */
   constructor(bus) {
     this.bus = bus;
+    this.disableInternalIO = Boolean(bus.disableInternalIO);
     this.xtalHz = 18432000;
     this.ioRegs = new Uint8Array(64);
     this.rxQueue = [[], []];
@@ -162,6 +163,7 @@ export class Z180 {
     this.halted = false;
     this.eiPending = false;
     this.int0Line = false;
+    this.int0AutoClear = false;
 
     this.cycles = 0;
     this.prtCycleAccum = 0;
@@ -294,9 +296,18 @@ export class Z180 {
   }
 
   /**
+   * Assert a one-shot external maskable interrupt (/INT0) that auto-clears upon service
+   */
+  triggerInt0() {
+    this.int0Line = true;
+    this.int0AutoClear = true;
+  }
+
+  /**
    * Check if port (with high byte) targets Z180 internal I/O space
    */
   isInternalIO(portLo, portHi) {
+    if (this.disableInternalIO) return false;
     const ioBase = this.ioRegs[Z180_REG.ICR] & 0xC0;
     const p = portLo & 0xFF;
     return (p & 0xC0) === ioBase && (portHi === 0x00 || (this.ioRegs[Z180_REG.ICR] & 0x20) === 0);
@@ -574,6 +585,10 @@ export class Z180 {
 
     // 1. External INT0 (if enabled in ITC bit 0)
     if (this.int0Line && (this.ioRegs[Z180_REG.ITC] & 0x01)) {
+      if (this.int0AutoClear) {
+        this.int0Line = false;
+        this.int0AutoClear = false;
+      }
       this.halted = false;
       this.iff1 = false;
       this.iff2 = false;

@@ -30,9 +30,19 @@ export class SC131 {
    * @param {(op: string, lba: number) => void} [options.onSdActivity]
    */
   constructor(options = {}) {
+    this.boardType = 'sc131';
     this.onSerialTx = options.onSerialTx || null;
     this.onLedChange = options.onLedChange || null;
     this.onSdActivity = options.onSdActivity || null;
+    this.onPrinterOut = options.onPrinterOut || null;
+    this.onScreenWrite = options.onScreenWrite || null;
+
+    // SCWorkshop Simulated Peripherals state
+    this.simSwitches = 0x00;
+    this.simLeds = 0x00;
+    this.termRxQueue = [];
+    this.printerText = '';
+    this.screenDirty = true;
 
     // 512 KB Flash ROM (0x00000 - 0x7FFFF) & 512 KB SRAM (0x80000 - 0xFFFFF)
     this.rom = new Uint8Array(512 * 1024);
@@ -153,6 +163,8 @@ export class SC131 {
       power: powerLed,   // LED2 (Green)
       reset: resetLed,   // LED3 (Red)
       sdSelect,
+      simLeds: (powerOk && !inReset) ? (this.simLeds & 0xFF) : 0x00,
+      simSwitches: this.simSwitches & 0xFF,
     };
   }
 
@@ -194,10 +206,11 @@ export class SC131 {
 
   /**
    * External I/O Port Read
-   * SC131 has no external readable I/O ports (U5 74HCT259 is write-only),
-   * so external I/O reads return 0xFF (open bus pull-up).
    */
-  readExtIO(_port) {
+  readExtIO(port) {
+    const p = port & 0xFF;
+    if (p === 0x00) return this.simSwitches & 0xFF;
+    if (p === 0x02) return this.termRxQueue.length > 0 ? this.termRxQueue.shift() : 0x00;
     return 0xFF;
   }
 
@@ -210,11 +223,29 @@ export class SC131 {
    */
   writeExtIO(port, val) {
     const p = port & 0xFF;
+    const b = val & 0xFF;
+    if (p === 0x00) {
+      this.simLeds = b;
+      this.notifyLeds();
+      return;
+    }
+    if (p === 0x01) {
+      if (this.onSerialTx) this.onSerialTx(0, b);
+      return;
+    }
+    if (p === 0x03) {
+      if (b !== 0x0D) {
+        const ch = (b === 0x0A || (b >= 32 && b <= 126)) ? String.fromCharCode(b) : '.';
+        this.printerText += ch;
+        if (this.onPrinterOut) this.onPrinterOut(b, this.printerText);
+      }
+      return;
+    }
     if ((p & 0xC0) === 0x00) {
-      const bit2 = (val >> 2) & 1;
+      const bit2 = (b >> 2) & 1;
       // Conventional ports are 0x0C (SPI /CS) and 0x0E (Status LED),
       // while Fuzix & SCM S6 also write diagnostic LEDs to 0x0D.
-      if ((p & 0x23) === 0x00) {
+      if (p === 0x0C || (p >= 0x08 && (p & 0x23) === 0x00)) {
         // 0b00X0XX00 -> SPI /CS latch (0x0C)
         const prev = this.u5Latch[0];
         this.u5Latch[0] = bit2;
@@ -224,9 +255,59 @@ export class SC131 {
         // 0b00X0XX1X -> Status LED1 latch (0x0E / 0x0D)
         const prev = this.u5Latch[1];
         this.u5Latch[1] = bit2;
+        this.simLeds = b;
         if (prev !== bit2) this.notifyLeds();
       }
     }
+  }
+
+  /**
+   * Load assembled segments into logical/physical memory
+   */
+  loadAssembledProgram(asmResult, { setPc = true } = {}) {
+    // Ensure Z180 ICR is relocated to $C0 so ports $00..$3F are external I/O
+    if (this.cpu.ioRegs[Z180_REG.ICR] === 0x00) {
+      this.cpu.ioRegs[Z180_REG.ICR] = 0xC0;
+    }
+    // If MMU is still at uninitialized hardware reset default, map $8000-$FFFF to SRAM
+    if (
+      this.cpu.ioRegs[Z180_REG.CBAR] === 0xF0 &&
+      this.cpu.ioRegs[Z180_REG.BBR] === 0x00 &&
+      this.cpu.ioRegs[Z180_REG.CBR] === 0x00
+    ) {
+      this.cpu.ioRegs[Z180_REG.CBAR] = 0x80;
+      this.cpu.ioRegs[Z180_REG.BBR] = 0x80;
+      this.cpu.ioRegs[Z180_REG.CBR] = 0x80;
+    }
+
+    for (const seg of asmResult.segments) {
+      for (let i = 0; i < seg.bytes.length; i++) {
+        const logAddr = (seg.addr + i) & 0xFFFF;
+        const b = seg.bytes[i] & 0xFF;
+        const phys = this.cpu.translateAddress(logAddr);
+        if ((phys & 0x80000) === 0) {
+          this.rom[phys & 0x7FFFF] = b;
+        } else {
+          this.ram[phys & 0x7FFFF] = b;
+        }
+      }
+    }
+
+    if (setPc) {
+      if (this.cpu.sp === 0xFFFF) {
+        this.cpu.sp = 0xFE00;
+      } else if (asmResult.origin >= 0x8000) {
+        // Push current PC so programs ending in RET return cleanly to SCM S6 / Monitor
+        this.cpu.push16(this.cpu.pc);
+      }
+      this.cpu.pc = asmResult.origin & 0xFFFF;
+      this.cpu.halted = false;
+    }
+  }
+
+  clearPrinter() {
+    this.printerText = '';
+    if (this.onPrinterOut) this.onPrinterOut(0, this.printerText);
   }
 
   /**
