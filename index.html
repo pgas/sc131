@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SC131 &amp; SC126 — Z180 Hardware Emulator</title>
+  <meta name="description" content="Cycle-accurate hardware emulator for Stephen C. Cousins' SC131 Z180 Pocket Computer and SC126 Z180 RC2014 Motherboard running RomWBW v3.6.0, CP/M 2.2, WordStar 4, and Fuzix 0.4 Unix OS." />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body class="app-body">
+  <!-- Top Command & Navigation Bar -->
+  <header class="topbar">
+    <div class="brand">
+      <div id="brand-badge" class="brand-badge">&#9889; SC131</div>
+      <div>
+        <div class="brand-title-row">
+          <h1 id="brand-title">SC131 Z180 Pocket Computer</h1>
+          <span id="status-pill" class="pill pill-running">RUNNING @ 18.432 MHz</span>
+        </div>
+        <p class="subtitle">
+          <span id="brand-subtitle-text">Zilog Z8S180-N @ 18.432 MHz &bull; 512 KB Flash &bull; 512 KB SRAM &bull; SPI SDHC</span> &bull;
+          <a id="brand-doc-link" href="https://smallcomputercentral.com/sc131-z180-pocket-computer/" target="_blank" rel="noopener">Small Computer Central &#8599;</a>
+        </p>
+      </div>
+    </div>
+
+    <!-- Direct, Functional Controls (No Menubar, No Dropdowns) -->
+    <div class="topbar-controls">
+      <div class="control-group">
+        <label for="machine-select">Hardware Board</label>
+        <select id="machine-select" class="select-control" title="Switch between SC131 Pocket Computer and SC126 RCBus Motherboard">
+          <option value="sc131">SC131 Pocket Computer (Z180)</option>
+          <option value="sc126">SC126 RC2014 Motherboard (Z180)</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label for="firmware-select">ROM / OS System</label>
+        <select id="firmware-select" class="select-control" title="Select ROM Firmware or Operating System">
+          <option id="fw-opt-romwbw" value="romwbw">RomWBW v3.6.0 (CP/M 2.2 / 3)</option>
+          <option value="fuzix">Fuzix 0.4 Unix OS (login: root)</option>
+          <option value="scm_s6">Small Computer Monitor S6</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label for="speed-select">CPU Speed</label>
+        <select id="speed-select" class="select-control" title="Select Simulation Speed">
+          <option value="1">18.432 MHz (1x Real-Time)</option>
+          <option value="2">36.864 MHz (2x Turbo)</option>
+          <option value="4">73.728 MHz (4x Turbo)</option>
+          <option value="0.5">9.216 MHz (0.5x Half)</option>
+        </select>
+      </div>
+
+      <div class="button-row">
+        <button id="btn-run-pause" class="btn btn-primary" title="Pause or Resume CPU Execution (F5 / F8)">Pause</button>
+        <button id="btn-step" class="btn" title="Single Step One Instruction (F10)">Step</button>
+        <button id="btn-reset" class="btn btn-danger" title="Hardware Tactile Reset (Ctrl+R)">Reset (SW1)</button>
+        <button id="btn-toggle-hardware" class="btn btn-toggle active" title="Show or Hide Hardware Enclosure Sidebar (Ctrl+B)">&#9709; Hardware</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Quick Launch Bar (Direct, One-Click Buttons) -->
+  <div class="quickbar-card">
+    <div class="quickbar-row">
+      <span class="quickbar-label">&#9889; Quick Launch:</span>
+      <button class="btn btn-xs" data-macro="2.0&#13;" title="Boot CP/M 2.2 from SDHC Slice 0">SD0.0: CP/M 2.2</button>
+      <button class="btn btn-xs" data-macro="2.1&#13;" title="Boot ZSDOS from SDHC Slice 1">SD0.1: ZSDOS</button>
+      <button class="btn btn-xs" data-macro="2.2&#13;" title="Boot CP/M 3 from SDHC Slice 2">SD0.2: CP/M 3</button>
+      <button class="btn btn-xs" data-macro="2.3&#13;" title="Boot Games Slice (Zork, Adv)">SD0.3: Games</button>
+      <button class="btn btn-xs" data-macro="2.4&#13;" title="Boot WordStar 4 from SDHC Slice 4">SD0.4: WordStar 4</button>
+      <button class="btn btn-xs" data-macro="2.5&#13;" title="Boot Turbo Pascal 3 from SDHC Slice 5">SD0.5: Turbo Pascal</button>
+      <button class="btn btn-xs" data-macro="C&#13;" title="Boot CP/M 2.2 from ROM Disk">ROM CP/M</button>
+      <button class="btn btn-xs" data-macro="Z&#13;" title="Boot Z-System from ROM Disk">ROM Z-System</button>
+      <button class="btn btn-xs" data-macro="B&#13;&#13;" title="Launch Microsoft BASIC 4.7b">BASIC</button>
+      <button class="btn btn-xs" data-macro="T&#13;" title="Launch Tasty BASIC">Tasty BASIC</button>
+      <button class="btn btn-xs" data-macro="F&#13;" title="Launch CamelForth">Forth</button>
+      <button class="btn btn-xs" data-macro="P&#13;" title="Play Built-in 2048 Game">2048 Game</button>
+      <button class="btn btn-xs" data-macro="M&#13;" title="Enter RomWBW Monitor">Monitor</button>
+      <button class="btn btn-xs" data-macro="S&#13;" title="List MicroSD Slices at Boot Loader">Slices (S)</button>
+      <button id="btn-fuzix-launch" class="btn btn-xs btn-accent" title="Mount Fuzix 0.4 Unix OS image and boot to root shell">&#128039; Fuzix Unix</button>
+      <button id="btn-led-demo" class="btn btn-xs btn-accent" title="Launch BASIC and run Hardware LED Blink Demo">&#128161; LED Blink Demo</button>
+    </div>
+  </div>
+
+  <!-- Main Workspace: Full-Height Terminal + Hardware Sidebar (No Debugger Pane) -->
+  <main class="workspace">
+    <!-- Center Column: Dual Serial Terminal -->
+    <section class="main-column">
+      <div class="card terminal-card">
+        <div class="card-header terminal-header">
+          <div class="terminal-tabs">
+            <button id="tab-asci0" class="term-tab active">
+              Serial Port A (ASCI0 Console &bull; 115200)
+              <span id="txrx-0" class="activity-dot"></span>
+            </button>
+            <button id="tab-asci1" class="term-tab">
+              Serial Port B (ASCI1 Aux &bull; 38400)
+              <span id="txrx-1" class="activity-dot"></span>
+            </button>
+          </div>
+
+          <div class="terminal-toolbar">
+            <select id="term-size-select" class="select-xs" title="Terminal Display Size">
+              <option value="sm">Compact (736&times;466)</option>
+              <option value="md">Medium (816&times;516)</option>
+              <option value="lg" selected>Large (896&times;566)</option>
+              <option value="xl">Full Width (1056&times;666)</option>
+            </select>
+            <select id="theme-select" class="select-xs" title="Terminal Color Theme">
+              <option value="amber">Amber CRT</option>
+              <option value="green">Green Phosphor</option>
+              <option value="modern">Modern Crisp</option>
+            </select>
+            <label class="checkbox-xs" title="Map Arrow Keys to WordStar Diamond (^E/^X/^S/^D)">
+              <input type="checkbox" id="chk-wordstar" /> WordStar Keys
+            </label>
+            <label class="checkbox-xs" title="Toggle CRT Scanline Overlay">
+              <input type="checkbox" id="chk-scanlines" checked /> Scanlines
+            </label>
+            <button id="btn-paste" class="btn btn-xs" title="Paste Text into Serial Port">Paste</button>
+            <button id="btn-copy-screen" class="btn btn-xs" title="Copy Terminal Screen Text">Copy</button>
+            <button id="btn-clear-term" class="btn btn-xs" title="Clear Terminal Display">Clear</button>
+          </div>
+        </div>
+
+        <div class="terminal-canvas-wrap">
+          <div class="terminal-viewport">
+            <canvas id="term-canvas-0"></canvas>
+            <canvas id="term-canvas-1" class="hidden"></canvas>
+            <div id="term-scrollbar" class="term-scrollbar" title="Scroll terminal history">
+              <div id="term-scroll-spacer" class="term-scroll-spacer"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="terminal-footer mono-xs">
+          <span>Click inside terminal to type &bull; 80&times;25 ANSI / VT100 Serial Console</span>
+          <span id="perf-counter">18.43 MHz &bull; 0 cycles</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Column: Hardware Enclosure, I/O Ports & Peripherals Sidebar -->
+    <aside id="side-column" class="side-column">
+      <!-- Card 1A: SC131 Red & Gold Front Panel Enclosure -->
+      <div id="hw-front-sc131" class="card hardware-card">
+        <div class="card-header">
+          <h2>SC131 Pocket Enclosure</h2>
+          <span class="mono-xs text-muted">Front Panel &amp; LEDs</span>
+        </div>
+
+        <div class="sc131-front-panel">
+          <div class="screw screw-tl"></div>
+          <div class="screw screw-tr"></div>
+          <div class="screw screw-bl"></div>
+          <div class="screw screw-br"></div>
+
+          <div class="panel-gold-border">
+            <div class="panel-left-controls">
+              <div class="led-row" title="LED1: Status LED (Orange, Port 0x0E Bit 2 Active Low)">
+                <span id="led-status" class="led led-orange on"></span>
+                <span class="led-label">Status</span>
+              </div>
+              <div class="led-row" title="LED2: Power LED (Green, 5V DC Supply)">
+                <span id="led-power" class="led led-green on"></span>
+                <span class="led-label">Power</span>
+              </div>
+              <div class="led-row" title="LED3: Reset LED (Red, DS1233 Supervisor / SW1 Reset)">
+                <span id="led-reset" class="led led-red"></span>
+                <span class="led-label">Reset</span>
+              </div>
+              <div class="reset-switch-row">
+                <button id="hw-reset-btn" class="tactile-reset-btn" title="Press SW1 Tactile Reset Switch"></button>
+                <span class="led-label">SW1</span>
+              </div>
+            </div>
+
+            <div class="panel-branding">
+              <div class="sc-title">SC131</div>
+              <div class="sc-sub">POCKET COMPUTER</div>
+              <div class="sc-mhz">Z180 &bull; 0.018 GHz</div>
+              <div class="sc-maker">Small Computer Central</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 1B: SC126 Z180 RC2014 Motherboard Front Panel -->
+      <div id="hw-front-sc126" class="card hardware-card hidden">
+        <div class="card-header">
+          <h2>SC126 Z180 Motherboard</h2>
+          <span class="mono-xs text-muted">RC2014 / RCBus &bull; Port $0D &amp; RTC</span>
+        </div>
+
+        <div class="sc126-front-panel">
+          <div class="sc126-top-row">
+            <div class="sc126-power-controls">
+              <div class="led-row" title="Yellow Power Indicator LED (5V DC Supply)">
+                <span id="sc126-led-power" class="led led-orange on"></span>
+                <span class="led-label">5V PWR</span>
+              </div>
+              <div class="led-row" title="DS1233-5+ Reset Supervisor Active">
+                <span id="sc126-led-reset" class="led led-red"></span>
+                <span class="led-label">/RESET</span>
+              </div>
+              <div class="reset-switch-row">
+                <button id="sc126-reset-btn" class="tactile-reset-btn" title="Press SW2 Tactile Reset Switch"></button>
+                <span class="led-label">SW2</span>
+              </div>
+            </div>
+
+            <div class="panel-branding">
+              <div class="sc-title">SC126</div>
+              <div class="sc-sub">Z180 MOTHERBOARD</div>
+              <div class="sc-mhz">RC2014 / RCBus-80</div>
+              <div class="sc-maker">Small Computer Central</div>
+            </div>
+          </div>
+
+          <!-- U7 (74HCT273) 8-Bit Green Diagnostic LED Bar at Port 0x0D (13) -->
+          <div class="sc126-led-bar-box">
+            <div class="sc126-box-header mono-xs">
+              <span>U7 &bull; Port $0D (13) Diagnostic LEDs</span>
+              <strong id="sc126-diag-hex">$00 (00000000)</strong>
+            </div>
+            <div id="sc126-led-bar" class="sc126-led-bar" title="Click any LED to toggle its bit in Port $0D, or write to Port 13 from Z180 code">
+              <div class="diag-led-cell" data-bit="7"><span id="diag-led-7" class="led led-green"></span><small>L7</small></div>
+              <div class="diag-led-cell" data-bit="6"><span id="diag-led-6" class="led led-green"></span><small>L6</small></div>
+              <div class="diag-led-cell" data-bit="5"><span id="diag-led-5" class="led led-green"></span><small>L5</small></div>
+              <div class="diag-led-cell" data-bit="4"><span id="diag-led-4" class="led led-green"></span><small>L4</small></div>
+              <div class="diag-led-cell" data-bit="3"><span id="diag-led-3" class="led led-green"></span><small>L3</small></div>
+              <div class="diag-led-cell" data-bit="2"><span id="diag-led-2" class="led led-green"></span><small>L2</small></div>
+              <div class="diag-led-cell" data-bit="1"><span id="diag-led-1" class="led led-green"></span><small>L1</small></div>
+              <div class="diag-led-cell" data-bit="0"><span id="diag-led-0" class="led led-green"></span><small>L0</small></div>
+            </div>
+          </div>
+
+          <!-- U9 Dallas DS1302 RTC + 31B NVRAM & I2C Bus at Port 0x0C (12) -->
+          <div class="sc126-rtc-box mono-xs">
+            <div class="sc126-box-header">
+              <span>U9 &bull; DS1302 RTC &amp; 31B NVRAM (Port $0C)</span>
+              <span id="sc126-rtc-ce" class="badge-mini">CE</span>
+            </div>
+            <div class="sc126-rtc-row">
+              <span>RTC Clock:</span>
+              <strong id="sc126-rtc-time">2026-10-21 00:00:00</strong>
+            </div>
+            <div class="sc126-rtc-row">
+              <span>I2C Master Bus (P6):</span>
+              <span id="sc126-i2c-status">SCL=1 SDA=1 &bull; /CS2=1</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 2: MicroSDHC Slot, Dual Serial & DS1233 Supervisor -->
+      <div id="hw-card-sd" class="card hardware-card">
+        <div class="card-header">
+          <h2>MicroSDHC &amp; Power / Serial</h2>
+          <span class="mono-xs text-muted">On-Board Peripherals</span>
+        </div>
+
+        <div class="rear-stack">
+          <div class="rear-section">
+            <div id="sd-port-title" class="rear-title">P1 &bull; SPI MicroSDHC Slot (Port 0x0C / CSIO)</div>
+            <div class="sd-slot-box">
+              <div class="sd-indicator-row">
+                <span id="led-sd-act" class="led led-cyan" title="SPI /CS1 Active Indicator"></span>
+                <span id="sd-status-text" class="mono-sm">SD0: 68 MB SDHC (8 Slices)</span>
+              </div>
+              <div class="sd-stats mono-xs">
+                <span>Op: <strong id="sd-last-op">IDLE</strong></span>
+                <span>LBA: <strong id="sd-last-lba">0x000000</strong></span>
+                <span>R/W: <strong id="sd-rw-count">0 / 0</strong></span>
+              </div>
+              <div class="sd-btn-row">
+                <label class="btn btn-xs" title="Mount a custom raw .img or .simg SD card image">
+                  Mount .img
+                  <input type="file" id="sd-file-input" accept=".img,.bin,.simg,.dat" hidden />
+                </label>
+                <button id="btn-sd-export" class="btn btn-xs" title="Download active SD card image">Export .img</button>
+                <button id="btn-sd-eject" class="btn btn-xs" title="Eject or Re-insert Micro SD Card">Eject SD</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="rear-section">
+            <div class="rear-title">Dual 5V FTDI Serial &amp; DS1233 Supervisor</div>
+            <div class="serial-ports-status mono-xs">
+              <div class="port-stat">
+                <span>Serial A (ASCI0):</span>
+                <strong id="asci0-cfg">115200 8N1</strong>
+                <span id="asci0-rts" class="badge-mini on">RTS</span>
+              </div>
+              <div class="port-stat">
+                <span>Serial B (ASCI1):</span>
+                <strong id="asci1-cfg">38400 8N1</strong>
+              </div>
+              <div class="voltage-control" title="DS1233-5+ EconoReset holds the Z180 in reset if supply voltage drops below 4.7V">
+                <label for="vcc-slider">Vcc Supply: <strong id="vcc-val">5.00V</strong></label>
+                <input type="range" id="vcc-slider" min="4.2" max="5.2" step="0.05" value="5.0" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 3: Interactive Motherboard PCB & Jumpers -->
+      <div id="hw-card-pcb" class="card hardware-card">
+        <div class="card-header">
+          <h2 id="pcb-card-title">SC131 v1.0 Motherboard PCB</h2>
+          <span class="mono-xs text-muted">ICs &amp; Jumpers</span>
+        </div>
+
+        <div class="pcb-board">
+          <div class="pcb-header-row">
+            <span id="pcb-silk-left" class="pcb-silk">SC131 v1.0 &bull; S. C. Cousins</span>
+            <span id="pcb-silk-right" class="pcb-silk">101.6 &times; 66.1 mm</span>
+          </div>
+
+          <!-- SC131 IC Grid -->
+          <div id="pcb-grid-sc131" class="pcb-chips-grid-2col">
+            <div class="ic-chip" id="chip-u1">
+              <div class="ic-name">U1 &bull; SST39SF040</div>
+              <div class="ic-desc">512 KB Flash ROM</div>
+              <div class="ic-addr mono-xs">0x00000 &ndash; 0x7FFFF</div>
+              <label class="btn btn-xs ic-upload-btn">
+                Load Custom ROM
+                <input type="file" id="rom-file-input" accept=".rom,.bin,.hex,.upd" hidden />
+              </label>
+            </div>
+
+            <div class="ic-chip" id="chip-u2">
+              <div class="ic-name">U2 &bull; AS6C4008</div>
+              <div class="ic-desc">512 KB Static RAM</div>
+              <div class="ic-addr mono-xs">0x80000 &ndash; 0xFFFFF</div>
+            </div>
+
+            <div class="ic-chip ic-plcc" id="chip-u4">
+              <div class="ic-name">U4 &bull; Z8S18020VSC</div>
+              <div class="ic-desc">Z180 CPU (PLCC-68)</div>
+              <div class="ic-addr mono-xs" id="pcb-phi-label">PHI = 18.432 MHz</div>
+            </div>
+
+            <div class="ic-chip ic-small">
+              <div class="ic-name">U3 &bull; 74AHCT139</div>
+              <div class="ic-desc">A19 &amp; I/O Decoder</div>
+              <div class="ic-addr mono-xs">Y0: I/O 0x00&ndash;0x3F</div>
+            </div>
+
+            <div class="ic-chip ic-small">
+              <div class="ic-name">U5 &bull; 74HCT259</div>
+              <div class="ic-desc">Addressable Latch</div>
+              <div class="ic-addr mono-xs">0x0C=/CS, 0x0E=LED1</div>
+            </div>
+
+            <div class="ic-chip ic-small">
+              <div class="ic-name">U7 &bull; DS1233-5+</div>
+              <div class="ic-desc">EconoReset (&lt;4.7V)</div>
+              <div class="ic-addr mono-xs">X1: 18.432 MHz Osc</div>
+            </div>
+          </div>
+
+          <!-- SC126 IC Grid -->
+          <div id="pcb-grid-sc126" class="pcb-chips-grid-2col hidden">
+            <div class="ic-chip">
+              <div class="ic-name">U1/U2 &bull; SST39SF040</div>
+              <div class="ic-desc">Dual 512 KB Flash ROM</div>
+              <div class="ic-addr mono-xs">0x00000 &ndash; 0x7FFFF</div>
+              <label class="btn btn-xs ic-upload-btn">
+                Load Custom ROM
+                <input type="file" id="rom-file-input-sc126" accept=".rom,.bin,.hex,.upd" hidden />
+              </label>
+            </div>
+
+            <div class="ic-chip">
+              <div class="ic-name">U3 &bull; AS6C4008</div>
+              <div class="ic-desc">512 KB Static RAM</div>
+              <div class="ic-addr mono-xs">0x80000 &ndash; 0xFFFFF</div>
+            </div>
+
+            <div class="ic-chip ic-plcc">
+              <div class="ic-name">U4 &bull; Z8S18020VSC</div>
+              <div class="ic-desc">Z180 CPU (PLCC-68)</div>
+              <div class="ic-addr mono-xs" id="pcb-phi-label-sc126">PHI = 18.432 MHz</div>
+            </div>
+
+            <div class="ic-chip ic-small">
+              <div class="ic-name">U7 &bull; 74HCT273</div>
+              <div class="ic-desc">8-Bit LED Latch</div>
+              <div class="ic-addr mono-xs">Port 0x0D (L7..L0)</div>
+            </div>
+
+            <div class="ic-chip ic-small">
+              <div class="ic-name">U6/U8 &bull; HCT273/244</div>
+              <div class="ic-desc">System Port 0x0C</div>
+              <div class="ic-addr mono-xs">RTC, I2C, /CS1, /CS2</div>
+            </div>
+
+            <div class="ic-chip ic-small">
+              <div class="ic-name">U9 &bull; DS1302+</div>
+              <div class="ic-desc">RTC &amp; 31B NVRAM</div>
+              <div class="ic-addr mono-xs">32.768 kHz Crystal</div>
+            </div>
+          </div>
+
+          <div class="pcb-jumpers">
+            <button id="btn-jp1" class="jumper-btn rd" title="JP1: Flash ROM Write Protect Jumper">
+              JP1: Rd (Write Protected)
+            </button>
+            <button id="btn-jp2" class="jumper-btn" title="JP2: Power via Serial Port B">
+              JP2: Open (Via Port A)
+            </button>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- Status Bar with Real Hardware Telemetry -->
+  <footer class="statusbar mono-xs">
+    <div class="statusbar-left">
+      <span id="sb-machine" class="sb-item sb-badge" title="Active Target Computer (Click to switch)">&#9247; SC131 (Z8S180)</span>
+      <span id="sb-cpu-state" class="sb-item" title="CPU Clock &amp; Execution State">&#9679; 18.43 MHz</span>
+      <span id="sb-pc" class="sb-item" title="CPU Program Counter">PC: $0000</span>
+      <span id="sb-vcc" class="sb-item" title="Vcc Supply Voltage">Vcc: 5.00V</span>
+    </div>
+    <div class="statusbar-right">
+      <span id="sb-serial" class="sb-item" title="Serial Console Port A State">ASCI0: 115200 8N1</span>
+      <span id="sb-sd" class="sb-item" title="Active MicroSDHC Image">SDHC: RomWBW (68MB)</span>
+      <span id="sb-cycles" class="sb-item" title="Cumulative Clock Cycles Executed">0 cycles</span>
+    </div>
+  </footer>
+
+  <script type="module" src="./src/ui/app.js"></script>
+</body>
+</html>

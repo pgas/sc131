@@ -1,0 +1,930 @@
+:root {
+  --bg-app: #090d14;
+  --bg-card: #111824;
+  --bg-card-alt: #0d131d;
+  --border-card: #1f2b3e;
+  --text-main: #e2e8f0;
+  --text-muted: #94a3b8;
+  --accent: #f59e0b;
+  --accent-hover: #d97706;
+  --accent-red: #b91c1c;
+  --sc131-red: #8c141b;
+  --sc131-red-dark: #5f0b10;
+  --sc131-gold: #e2b955;
+  --sc131-gold-bright: #f7d97e;
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Mono", "Courier New", monospace;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg-app);
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  line-height: 1.45;
+  min-height: 100vh;
+}
+
+.app-body {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+  background: #090d14;
+}
+
+a {
+  color: var(--sc131-gold);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+.mono-sm {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+.mono-xs {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ==========================================================================
+   Topbar (Brand & Direct Controls)
+   ========================================================================== */
+
+.topbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: #0b111e;
+  border-bottom: 1px solid #1c283c;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-badge {
+  background: linear-gradient(135deg, var(--sc131-red), var(--sc131-red-dark));
+  border: 1.5px solid var(--sc131-gold);
+  color: var(--sc131-gold-bright);
+  font-family: var(--font-mono);
+  font-weight: 800;
+  font-size: 14px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  letter-spacing: 0.5px;
+  user-select: none;
+  box-shadow: 0 2px 8px rgba(185, 28, 28, 0.4);
+}
+
+.brand-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-title-row h1 {
+  font-size: 15px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.subtitle {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.pill {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+  letter-spacing: 0.3px;
+}
+
+.pill-running {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.35);
+}
+
+.pill-paused {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.topbar-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.control-group label {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.select-control {
+  background: #0e1524;
+  color: #f1f5f9;
+  border: 1px solid #233247;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.select-control:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.button-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+/* ==========================================================================
+   Quick Launch Bar (Direct Buttons)
+   ========================================================================== */
+
+.quickbar-card {
+  flex-shrink: 0;
+  background: #0e1422;
+  border-bottom: 1px solid #1a2538;
+  padding: 6px 14px;
+  overflow-x: auto;
+}
+
+.quickbar-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.quickbar-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--sc131-gold);
+  margin-right: 4px;
+}
+
+/* ==========================================================================
+   Workspace Layout (Center Terminal + Right Hardware Sidebar)
+   ========================================================================== */
+
+.workspace {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  background: #090d14;
+}
+
+/* Main Column: Full-Height Terminal */
+.main-column {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  overflow: auto;
+}
+
+.terminal-card {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background: #0f1523;
+  border: 1px solid #1c2738;
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+.terminal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.terminal-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.term-tab {
+  background: #162032;
+  color: var(--text-muted);
+  border: 1px solid #26354d;
+  border-radius: 5px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.12s ease;
+}
+
+.term-tab:hover {
+  color: #f1f5f9;
+  background: #1c293f;
+}
+
+.term-tab.active {
+  background: #1e293b;
+  color: #f8fafc;
+  border-color: var(--sc131-gold);
+}
+
+.activity-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #334155;
+}
+.activity-dot.active {
+  background: #38bdf8;
+  box-shadow: 0 0 6px #38bdf8;
+}
+
+.terminal-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.terminal-canvas-wrap {
+  background: #05070b;
+  border: 1px solid #243247;
+  border-radius: 6px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px;
+}
+
+.terminal-viewport {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid #1e293b;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #05070b;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6);
+  position: relative;
+}
+
+/* Optional Scanline CRT Overlay */
+.terminal-viewport::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+  background-size: 100% 4px;
+  opacity: 0.7;
+}
+
+.terminal-viewport.no-scanlines::after {
+  display: none;
+}
+
+#term-canvas-0, #term-canvas-1 {
+  max-width: 100%;
+  height: auto;
+  outline: none;
+  cursor: text;
+  display: block;
+}
+
+.term-scrollbar {
+  width: 16px;
+  overflow-y: scroll;
+  overflow-x: hidden;
+  background: #0d131f;
+  border-left: 1px solid #243247;
+  user-select: none;
+}
+
+.term-scroll-spacer {
+  width: 1px;
+  height: 100%;
+}
+
+.terminal-footer {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+/* ==========================================================================
+   Right Column: Hardware Enclosure, I/O Ports & Peripherals Sidebar
+   ========================================================================== */
+
+.side-column {
+  width: 410px;
+  flex-shrink: 0;
+  background: #0d131f;
+  border-left: 1px solid #1c293c;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.hardware-card {
+  background: #101726;
+  border: 1px solid #1c2738;
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.card-header h2 {
+  font-size: 13px;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+/* SC131 Front Panel */
+.sc131-front-panel {
+  position: relative;
+  background: linear-gradient(135deg, var(--sc131-red), var(--sc131-red-dark));
+  border: 2px solid var(--sc131-gold);
+  border-radius: 8px;
+  padding: 14px;
+  box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.7), 0 4px 14px rgba(0, 0, 0, 0.5);
+}
+
+.screw {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: radial-gradient(circle, #f59e0b 20%, #78350f 80%);
+  border-radius: 50%;
+  border: 1px solid #451a03;
+}
+.screw-tl { top: 6px; left: 6px; }
+.screw-tr { top: 6px; right: 6px; }
+.screw-bl { bottom: 6px; left: 6px; }
+.screw-br { bottom: 6px; right: 6px; }
+
+.panel-gold-border {
+  border: 1.5px solid var(--sc131-gold);
+  border-radius: 6px;
+  padding: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.panel-left-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.led-row, .reset-switch-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.led {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 1.5px solid #334155;
+  background: #1e293b;
+  display: inline-block;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6);
+  transition: all 0.15s ease;
+}
+
+.led.led-green.on {
+  background: #22c55e;
+  border-color: #86efac;
+  box-shadow: 0 0 10px #22c55e, inset 0 1px 2px #fff;
+}
+.led.led-orange.on {
+  background: #f97316;
+  border-color: #fdba74;
+  box-shadow: 0 0 10px #f97316, inset 0 1px 2px #fff;
+}
+.led.led-red.on {
+  background: #ef4444;
+  border-color: #fca5a5;
+  box-shadow: 0 0 10px #ef4444, inset 0 1px 2px #fff;
+}
+.led.led-cyan.on {
+  background: #06b6d4;
+  border-color: #67e8f9;
+  box-shadow: 0 0 10px #06b6d4, inset 0 1px 2px #fff;
+}
+
+.led-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--sc131-gold-bright);
+}
+
+.tactile-reset-btn {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #dc2626 40%, #7f1d1d 90%);
+  border: 1.5px solid #fecaca;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+.tactile-reset-btn:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.panel-branding {
+  text-align: right;
+  color: var(--sc131-gold);
+  line-height: 1.15;
+}
+.panel-branding .sc-title {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+  color: var(--sc131-gold-bright);
+}
+.panel-branding .sc-sub {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+}
+.panel-branding .sc-mhz {
+  font-size: 9.5px;
+  color: #fef08a;
+}
+.panel-branding .sc-maker {
+  font-size: 9px;
+  opacity: 0.85;
+}
+
+/* SC126 Front Panel */
+.sc126-front-panel {
+  background: #141c2c;
+  border: 2px solid #2d3e58;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.sc126-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #23334a;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+}
+
+.sc126-power-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* 8-LED Diagnostic Bar */
+.sc126-led-bar-box {
+  background: #090e18;
+  border: 1px solid #1c2a3e;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.sc126-box-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #94a3b8;
+  margin-bottom: 6px;
+}
+
+.sc126-led-bar {
+  display: flex;
+  justify-content: space-between;
+  background: #04060a;
+  border: 1px solid #182436;
+  border-radius: 4px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.diag-led-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.diag-led-cell small {
+  font-size: 9px;
+  color: #64748b;
+  font-family: var(--font-mono);
+}
+
+/* RTC Box */
+.sc126-rtc-box {
+  background: #090e18;
+  border: 1px solid #1c2a3e;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sc126-rtc-row {
+  display: flex;
+  justify-content: space-between;
+  color: #94a3b8;
+}
+
+/* MicroSD Card & Power */
+.rear-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rear-section {
+  background: #090e18;
+  border: 1px solid #1c2a3e;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.rear-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--sc131-gold);
+  margin-bottom: 6px;
+}
+
+.sd-slot-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sd-indicator-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sd-stats {
+  display: flex;
+  justify-content: space-between;
+  color: #94a3b8;
+  background: #05080f;
+  padding: 4px 6px;
+  border-radius: 3px;
+}
+
+.sd-btn-row {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.serial-ports-status {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.port-stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #94a3b8;
+}
+
+.voltage-control {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #1a2538;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.voltage-control input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+/* PCB Component Layout */
+.pcb-board {
+  background: #0a3320;
+  border: 2px solid #15803d;
+  border-radius: 6px;
+  padding: 10px;
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.7);
+}
+
+.pcb-header-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.pcb-silk {
+  font-size: 9.5px;
+  color: #86efac;
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.pcb-chips-grid-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.ic-chip {
+  background: #050b07;
+  border: 1px solid #22c55e;
+  border-radius: 4px;
+  padding: 6px;
+  color: #e2e8f0;
+}
+
+.ic-chip.ic-plcc {
+  border-color: #eab308;
+  background: #111a0c;
+}
+
+.ic-chip.ic-small {
+  opacity: 0.85;
+}
+
+.ic-name {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #86efac;
+}
+.ic-chip.ic-plcc .ic-name {
+  color: #fde047;
+}
+
+.ic-desc {
+  font-size: 9.5px;
+  color: #94a3b8;
+}
+
+.ic-addr {
+  font-size: 9px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.ic-upload-btn {
+  margin-top: 4px;
+  display: inline-block;
+  font-size: 9.5px;
+  padding: 2px 5px;
+}
+
+.pcb-jumpers {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+}
+
+.jumper-btn {
+  background: #0e1e14;
+  border: 1px solid #22c55e;
+  color: #86efac;
+  font-size: 10px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.jumper-btn.wr {
+  background: #3f1212;
+  border-color: #ef4444;
+  color: #fca5a5;
+}
+
+/* ==========================================================================
+   Shared Controls, Buttons, Badges, Inputs
+   ========================================================================== */
+
+.btn {
+  background: #1e293b;
+  color: #e2e8f0;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.btn:hover {
+  background: #2b394f;
+  color: #fff;
+  border-color: #475569;
+}
+
+.btn-primary {
+  background: #1d4ed8;
+  border-color: #3b82f6;
+  color: #fff;
+}
+.btn-primary:hover {
+  background: #2563eb;
+}
+
+.btn-success {
+  background: #15803d;
+  border-color: #22c55e;
+  color: #fff;
+}
+.btn-success:hover {
+  background: #16a34a;
+}
+
+.btn-danger {
+  background: #991b1b;
+  border-color: #ef4444;
+  color: #fff;
+}
+.btn-danger:hover {
+  background: #b91c1c;
+}
+
+.btn-accent {
+  background: #d97706;
+  border-color: #f59e0b;
+  color: #000;
+  font-weight: 700;
+}
+.btn-accent:hover {
+  background: #f59e0b;
+}
+
+.btn-toggle.active {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+}
+
+.btn-xs {
+  font-size: 11px;
+  padding: 3px 7px;
+}
+
+.select-xs {
+  background: #0f172a;
+  color: #e2e8f0;
+  border: 1px solid #24334a;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.checkbox-xs {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.badge-mini {
+  background: #1e293b;
+  color: #94a3b8;
+  font-size: 9.5px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid #334155;
+  font-family: var(--font-mono);
+}
+.badge-mini.on {
+  background: #14532d;
+  color: #86efac;
+  border-color: #22c55e;
+}
+
+/* ==========================================================================
+   Status Bar
+   ========================================================================== */
+
+.statusbar {
+  flex-shrink: 0;
+  height: 24px;
+  min-height: 24px;
+  background: #060910;
+  border-top: 1px solid #151f2e;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  color: #94a3b8;
+  user-select: none;
+}
+
+.statusbar-left, .statusbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sb-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sb-badge {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.sb-badge:hover {
+  background: rgba(245, 158, 11, 0.25);
+  color: #fff;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  .side-column {
+    width: 320px;
+  }
+}
