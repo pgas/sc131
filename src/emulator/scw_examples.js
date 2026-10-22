@@ -462,7 +462,7 @@ Loop:       LD   B, D
             CP   13
             JR   C, Loop
 
-Done:       JP   Start          ; Repeat
+Done:       JR   Done           ; Complete! Table is at $8100, last product on LEDs
 
             .END
 `,
