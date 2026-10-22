@@ -8,11 +8,39 @@ A cycle-accurate, zero-dependency JavaScript hardware emulator for two of Stephe
 - **SC131 Pocket Computer:** **[https://pgas.github.io/sc131/](https://pgas.github.io/sc131/)**
 - **SC126 Z180 Motherboard (RC2014):** **[https://pgas.github.io/sc131/?machine=sc126](https://pgas.github.io/sc131/?machine=sc126)**
 
+*(Note: The full Small Computer Workshop IDE with built-in two-pass assembler, editor, and tutorial is safely archived on the [`workshop-ide`](https://github.com/pgas/sc131/tree/workshop-ide) branch).*
+
+---
+
+## Modern Dark Studio UI Architecture
+
+The emulator features a clean, responsive VS Code-style workbench with zero floating modal windows:
+
+1. **Title & Menu Bar**:
+   - Native desktop menus: `File`, `Machine`, `⚡ Quick Boot`, `View`, `Run`, and `Help`.
+   - Direct switching between **SC131 Pocket Computer** and **SC126 RCBus Motherboard**.
+   - Direct firmware switching: **RomWBW v3.6.0**, **Fuzix 0.4 Unix OS**, and **Small Computer Monitor S6**.
+   - Multi-speed execution: 18.432 MHz (1x real-time), 36.864 MHz (2x turbo), 73.728 MHz (4x turbo), 9.216 MHz (0.5x half).
+   - Modern layout toggle icon buttons (`⬒` Bottom Panel, `◨` Hardware Sidebar).
+
+2. **Dual Serial Terminal (ASCI0 & ASCI1)**:
+   - Full-height center view for the console.
+   - Dedicated `⚡ Quick Boot ▾` dropdown on the terminal toolbar for one-click booting into CP/M 2.2, CP/M 3, WordStar 4, Turbo Pascal, BASIC, Fuzix Unix, and hardware demos.
+   - VT100 / ANSI cursor addressing, CRT phosphor themes (Amber CRT, Green Phosphor, Modern Crisp), WordStar diamond arrow key mapping (`^E`/`^X`/`^S`/`^D`), scanlines overlay, copy, paste, and terminal scrollback history.
+
+3. **Docked Bottom Debugger Panel (`Ctrl+J` / `⬒` icon)**:
+   - **CPU & MMU Registers**: Full 16-bit register file (PC, SP, AF, BC, DE, HL, IX, IY, AF', BC', DE', HL', I/R, flags breakdown), plus live Z180 MMU translation table (`CBAR`, `BBR`, `CBR`, Common 0, Bank, Common 1).
+   - **Interactive Disassembler**: Live decoding of Z80 and Z180 instructions (`MLT`, `IN0`, `OUT0`, `TST`), jump to current PC (`@PC`), arbitrary address browsing, and interactive breakpoints.
+   - **Virtualized Memory Hex Inspector**: 60 FPS DOM virtualization across 64 KB Logical CPU space, 512 KB Physical ROM, and 512 KB Physical SRAM with address jump shortcuts (`$0000`, `$0100`, `$8000`, `@PC`, `@SP`, `@HL`).
+
+4. **Machine Hardware Sidebar (`Ctrl+B` / `◨` icon)**:
+   - Dynamically reflects the selected machine:
+     - **SC131**: Red & gold front panel enclosure with Status LED1 (Port `$0E` bit 2), Power LED, Reset LED, SW1 tactile button, SPI MicroSDHC slot, DS1233 voltage supervisor slider (`< 4.7V` brownout reset), and SC131 v1.0 Motherboard PCB with IC chips and jumpers (`JP1` write-protect, `JP2` power).
+     - **SC126**: Motherboard front panel with Power, Reset, SW2 button, U7 Port `$0D` (13) 8-LED Diagnostic Bar (`L7..L0`) with real-time green LEDs and click-to-toggle, Dallas DS1302 Real-Time Clock & 31-byte NVRAM & I2C indicators, SPI MicroSDHC slot, DS1233 slider, and SC126 v1.1 Motherboard PCB.
+
 ---
 
 ## Hardware Architectures Emulated
-
-Use the **Hardware Board** dropdown in the top bar to switch between the **SC131 Pocket Computer** and the **SC126 RC2014 Motherboard**:
 
 ### 1. SC131 Z180 Pocket Computer (`sc131.js`)
 | Component | Part | Function in SC131 |
@@ -37,22 +65,22 @@ Use the **Hardware Board** dropdown in the top bar to switch between the **SC131
 
 ---
 
-## Bundled Official Firmware & 8-Slice SDHC Image
-
-The emulator ships with the unmodified official firmware and software distribution for both boards:
+## Bundled Official Firmware & Operating Systems
 
 1. **RomWBW v3.6.0 for SC131 (`assets/romwbw_sc131.rom`, `SCZ180_sc131_std.rom`, 512 KB)**
 2. **RomWBW v3.6.0 for SC126 (`assets/romwbw_sc126.rom`, `SCZ180_sc126_std.rom`, 512 KB)**
-3. **Small Computer Monitor S6 (`assets/scm_s6.rom`, 32 KB)** — Stephen C. Cousins' standalone monitor supporting both SC131 and SC126 (`S6` configuration).
-4. **Pre-populated 8-Slice MicroSDHC Card (`assets/sc131_sdcard.simg`)** — Contains 8 bootable RomWBW v3.6.0 hard disk slices:
-   - `2.0` (`SD0:0` / Drive `A:`): **CP/M 2.2** (`BBCBASIC`, `MBASIC`, `ASM`, `DDT`, `STAT`, `PIP`, `ED`, `SURVEY`, `XM`, etc.)
+3. **Small Computer Monitor S6 (`assets/scm_s6.rom`, 32 KB)** — Stephen C. Cousins' standalone monitor.
+4. **Pre-populated 8-Slice MicroSDHC Card (`assets/sc131_sdcard.simg`)**:
+   - `2.0` (`SD0:0` / Drive `A:`): **CP/M 2.2** (`BBCBASIC`, `MBASIC`, `ASM`, `DDT`, `STAT`, `PIP`, `ED`, `SURVEY`, `XM`)
    - `2.1` (`SD0:1` / Drive `D:`): **ZSDOS 1.1 (Z-System)**
    - `2.2` (`SD0:2` / Drive `E:`): **CP/M 3.0 (CP/M Plus)**
-   - `2.3` (`SD0:3` / Drive `F:`): **Classic Infocom & Text Games** (`Zork I–III`, `Hitchhiker's Guide`, `Colossal Cave Adventure`, `Ladder`, `Catchum`)
+   - `2.3` (`SD0:3` / Drive `F:`): **Classic Infocom Games** (`Zork I–III`, `Hitchhiker's Guide`, `Colossal Cave Adventure`)
    - `2.4` (`SD0:4` / Drive `G:`): **WordStar 4.0**
    - `2.5` (`SD0:5` / Drive `H:`): **Borland Turbo Pascal 3.01A**
-   - `2.6` (`SD0:6` / Drive `I:`): **Microsoft BASIC (`MBASIC`) & Games (`STARTREK.BAS`, `HAMURABI.BAS`, `LUNAR.BAS`)**
+   - `2.6` (`SD0:6` / Drive `I:`): **Microsoft BASIC (`MBASIC`) & Games (`STARTREK.BAS`, `HAMURABI.BAS`)**
    - `2.7` (`SD0:7` / Drive `J:`): **Hi-Tech C Compiler v3.09**
+5. **Fuzix 0.4 Unix OS SD Card (`assets/fuzix_sdcard.simg`)**:
+   - Multi-tasking Unix OS with root shell, coreutils, vi (`vile`), games, and networking utilities.
 
 ---
 
