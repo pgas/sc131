@@ -10,68 +10,208 @@
 <body class="vscode-body">
   <!-- Top VS Code Workbench Title & Command Bar -->
   <header class="topbar vscode-titlebar">
-    <div class="brand">
-      <div id="brand-badge" class="brand-badge">SCW</div>
-      <div>
-        <div class="brand-title-row">
-          <h1 id="brand-title">Small Computer Workshop &mdash; SC131 / SC126 IDE</h1>
-          <span id="status-pill" class="pill pill-running">RUNNING @ 18.432 MHz</span>
+    <div class="titlebar-left">
+      <div id="brand-badge" class="brand-badge" title="Small Computer Workshop IDE">SCW</div>
+
+      <!-- Native Desktop IDE Menu Bar -->
+      <nav class="vscode-menubar" aria-label="Main Application Menu">
+        <div class="menubar-item" data-menu="file">
+          <button class="menubar-btn" aria-haspopup="true">File</button>
+          <div class="menubar-dropdown">
+            <button class="menu-action" id="menu-file-new"><span>New .asm</span> <span class="menu-shortcut">Ctrl+N</span></button>
+            <label class="menu-action menu-file-label">
+              <span>Open .asm File...</span> <span class="menu-shortcut">Ctrl+O</span>
+              <input type="file" id="asm-file-input-menu" accept=".asm,.z80,.txt,.inc" hidden />
+            </label>
+            <div class="menu-divider"></div>
+            <button class="menu-action" id="menu-file-save-asm"><span>Save .asm Source</span> <span class="menu-shortcut">Ctrl+S</span></button>
+            <button class="menu-action" id="menu-file-save-hex"><span>Export Intel HEX (.hex)</span></button>
+            <button class="menu-action" id="menu-file-save-lst"><span>Export Listing (.lst)</span></button>
+          </div>
         </div>
-        <p class="subtitle">
-          <span id="brand-subtitle-text">Z80 / Z180 Assembler &bull; Simulator &bull; SC131 &amp; SC126 Hardware Emulator</span> &bull;
-          <a id="brand-doc-link" href="https://smallcomputercentral.com/small-computer-workshop/" target="_blank" rel="noopener">Small Computer Central</a>
-        </p>
-      </div>
+
+        <div class="menubar-item" data-menu="edit">
+          <button class="menubar-btn" aria-haspopup="true">Edit</button>
+          <div class="menubar-dropdown">
+            <button class="menu-action" id="menu-edit-conv"><span>Base &amp; ASCII Conversions</span></button>
+            <div class="menu-divider"></div>
+            <button class="menu-action" id="menu-edit-clear-term"><span>Clear Serial Terminal</span></button>
+            <button class="menu-action" id="menu-edit-copy-term"><span>Copy Terminal Screen</span></button>
+            <button class="menu-action" id="menu-edit-paste-term"><span>Paste Text to Serial</span></button>
+          </div>
+        </div>
+
+        <div class="menubar-item" data-menu="view">
+          <button class="menubar-btn" aria-haspopup="true">View</button>
+          <div class="menubar-dropdown">
+            <button class="menu-action" id="menu-view-sidebar"><span>Toggle Primary Sidebar</span> <span class="menu-shortcut">Ctrl+B</span></button>
+            <button class="menu-action" id="menu-view-split"><span>Toggle Side-by-Side Split View</span></button>
+            <button class="menu-action" id="menu-view-panel"><span>Toggle Bottom Panel</span> <span class="menu-shortcut">Ctrl+J</span></button>
+            <button class="menu-action" id="menu-view-hardware"><span>Toggle Hardware Sidebar</span></button>
+            <div class="menu-divider"></div>
+            <button class="menu-action" id="menu-view-term-tab"><span>Focus Terminal Tab</span></button>
+            <button class="menu-action" id="menu-view-editor-tab"><span>Focus Editor Tab</span></button>
+            <button class="menu-action" id="menu-view-sim-periph"><span>Focus Sim Screen &amp; Printer</span></button>
+          </div>
+        </div>
+
+        <div class="menubar-item" data-menu="machine">
+          <button class="menubar-btn" aria-haspopup="true">Machine</button>
+          <div class="menubar-dropdown">
+            <div class="menu-header">Target Architecture</div>
+            <button class="menu-action" data-machine-pick="sc131"><span id="menu-chk-sc131">&#9679; </span> SC131 Z180 Pocket Computer</button>
+            <button class="menu-action" data-machine-pick="sc126"><span id="menu-chk-sc126">&#9675; </span> SC126 Z180 RC2014 Motherboard</button>
+            <button class="menu-action" data-machine-pick="sim_z80"><span id="menu-chk-sim">&#9675; </span> Simulated Z80 (SCWorkshop)</button>
+            <div class="menu-divider"></div>
+            <div class="menu-header">ROM Firmware / OS</div>
+            <button class="menu-action" data-fw-pick="romwbw"><span id="menu-chk-fw-romwbw">&#9679; </span> RomWBW v3.6.0</button>
+            <button class="menu-action" data-fw-pick="fuzix"><span id="menu-chk-fw-fuzix">&#9675; </span> Fuzix 0.4 Unix OS</button>
+            <button class="menu-action" data-fw-pick="scm_s6"><span id="menu-chk-fw-scm">&#9675; </span> Small Computer Monitor S6</button>
+            <div class="menu-divider"></div>
+            <div class="menu-header">Simulation Speed</div>
+            <button class="menu-action" data-speed-pick="1">18.432 MHz (1x Real-Time)</button>
+            <button class="menu-action" data-speed-pick="2">36.864 MHz (2x Turbo)</button>
+            <button class="menu-action" data-speed-pick="4">73.728 MHz (4x Turbo)</button>
+            <button class="menu-action" data-speed-pick="0.5">9.216 MHz (0.5x Half)</button>
+          </div>
+        </div>
+
+        <div class="menubar-item" data-menu="quickboot">
+          <button class="menubar-btn menu-highlight" aria-haspopup="true">&#9889; Quick Boot</button>
+          <div class="menubar-dropdown menu-dropdown-wide">
+            <div class="menu-header">MicroSD Slices (RomWBW)</div>
+            <div class="menu-grid-2col">
+              <button class="menu-action" data-macro="2.0&#13;">SD0.0: CP/M 2.2</button>
+              <button class="menu-action" data-macro="2.1&#13;">SD0.1: ZSDOS</button>
+              <button class="menu-action" data-macro="2.2&#13;">SD0.2: CP/M 3</button>
+              <button class="menu-action" data-macro="2.3&#13;">SD0.3: Games (Zork, Adv)</button>
+              <button class="menu-action" data-macro="2.4&#13;">SD0.4: WordStar 4</button>
+              <button class="menu-action" data-macro="2.5&#13;">SD0.5: Turbo Pascal</button>
+            </div>
+            <div class="menu-divider"></div>
+            <div class="menu-header">ROM Systems &amp; Languages</div>
+            <div class="menu-grid-2col">
+              <button class="menu-action" data-macro="C&#13;">ROM CP/M 2.2</button>
+              <button class="menu-action" data-macro="Z&#13;">ROM Z-System</button>
+              <button class="menu-action" data-macro="B&#13;&#13;">BASIC (Microsoft 4.7b)</button>
+              <button class="menu-action" data-macro="T&#13;">Tasty BASIC</button>
+              <button class="menu-action" data-macro="F&#13;">CamelForth</button>
+              <button class="menu-action" data-macro="P&#13;">2048 Game</button>
+              <button class="menu-action" data-macro="M&#13;">RomWBW Monitor</button>
+              <button class="menu-action" data-macro="S&#13;">List SD Slices (S)</button>
+            </div>
+            <div class="menu-divider"></div>
+            <div class="menu-header">Operating Systems &amp; Demos</div>
+            <button class="menu-action" id="menu-launch-fuzix">&#128039; Fuzix 0.4 Unix OS (login: root)</button>
+            <button class="menu-action" id="menu-launch-led-demo">&#128161; Hardware LED Blink Demo</button>
+          </div>
+        </div>
+
+        <div class="menubar-item" data-menu="run">
+          <button class="menubar-btn" aria-haspopup="true">Run</button>
+          <div class="menubar-dropdown">
+            <button class="menu-action" id="menu-run-assemble-run"><span>Assemble &amp; Run</span> <span class="menu-shortcut">F5</span></button>
+            <button class="menu-action" id="menu-run-assemble"><span>Assemble Only</span> <span class="menu-shortcut">F7</span></button>
+            <button class="menu-action" id="menu-run-pause"><span>Pause / Resume CPU</span> <span class="menu-shortcut">F8</span></button>
+            <button class="menu-action" id="menu-run-step"><span>Step Instruction</span> <span class="menu-shortcut">F10</span></button>
+            <div class="menu-divider"></div>
+            <button class="menu-action" id="menu-run-walk"><span>Walk Mode (~12 ips animated)</span></button>
+            <button class="menu-action" id="menu-run-jog"><span>Jog Mode (~600 ips animated)</span></button>
+            <div class="menu-divider"></div>
+            <button class="menu-action" id="menu-run-interrupt"><span>Assert Hardware Interrupt (/INT0)</span></button>
+            <button class="menu-action" id="menu-run-reset"><span>Hardware Reset</span></button>
+          </div>
+        </div>
+
+        <div class="menubar-item" data-menu="help">
+          <button class="menubar-btn" aria-haspopup="true">Help</button>
+          <div class="menubar-dropdown">
+            <a class="menu-action" href="https://smallcomputercentral.com/small-computer-workshop/" target="_blank" rel="noopener">Small Computer Workshop Guide &#8599;</a>
+            <a class="menu-action" href="https://smallcomputercentral.com/sc131-z180-pocket-computer/" target="_blank" rel="noopener">SC131 Pocket Computer Reference &#8599;</a>
+            <a class="menu-action" href="https://smallcomputercentral.com/rcbus/sc100-series/sc126-z180-motherboard-rc2014/" target="_blank" rel="noopener">SC126 Motherboard Reference &#8599;</a>
+          </div>
+        </div>
+      </nav>
     </div>
 
-    <div class="topbar-controls">
-      <div class="control-group">
-        <label for="machine-select">Target Machine</label>
-        <select id="machine-select" title="Switch between SC131 Pocket Computer, SC126 RC2014 Motherboard, and SCWorkshop Simulated Z80">
-          <option value="sc131">SC131 &mdash; Z180 Pocket Computer</option>
-          <option value="sc126">SC126 &mdash; Z180 RC2014 Motherboard</option>
-          <option value="sim_z80">Simulated Z80 &mdash; SCWorkshop Computer</option>
+    <!-- Center Breadcrumb -->
+    <div class="titlebar-center">
+      <div class="titlebar-breadcrumb">
+        <span id="crumb-machine-name" class="crumb-part">SC131</span>
+        <span class="crumb-sep">&rsaquo;</span>
+        <span id="crumb-file-name" class="crumb-part crumb-active">Count.asm</span>
+      </div>
+      <!-- Hidden compatibility fields -->
+      <h1 id="brand-title" class="hidden">Small Computer Workshop</h1>
+      <span id="status-pill" class="hidden">RUNNING</span>
+      <span id="brand-subtitle-text" class="hidden"></span>
+      <a id="brand-doc-link" href="https://smallcomputercentral.com/small-computer-workshop/" class="hidden" target="_blank" rel="noopener"></a>
+    </div>
+
+    <!-- Right Controls: Target Select, Streamlined Run Bar & Layout Icons -->
+    <div class="titlebar-right">
+      <div class="control-group" style="margin:0;">
+        <select id="machine-select" class="select-xs titlebar-select" title="Switch Target Machine">
+          <option value="sc131">SC131 (Z180)</option>
+          <option value="sc126">SC126 (Z180)</option>
+          <option value="sim_z80">Simulated Z80</option>
         </select>
       </div>
 
-      <div class="control-group" id="firmware-control-group">
-        <label for="firmware-select">ROM / OS System</label>
-        <select id="firmware-select" title="Select Flash ROM Firmware / OS Image">
-          <option id="fw-opt-romwbw" value="romwbw">RomWBW v3.6.0 (SCZ180_sc131_std)</option>
-          <option value="fuzix">Fuzix 0.4 Unix OS (rcbus-z180)</option>
-          <option value="scm_s6">Small Computer Monitor S6 (SCM S6)</option>
+      <div class="control-group" id="firmware-control-group" style="margin:0;">
+        <select id="firmware-select" class="select-xs titlebar-select" title="ROM Firmware">
+          <option id="fw-opt-romwbw" value="romwbw">RomWBW</option>
+          <option value="fuzix">Fuzix Unix</option>
+          <option value="scm_s6">SCM S6</option>
         </select>
       </div>
 
-      <div class="control-group">
-        <label for="speed-select">Clock Speed</label>
-        <select id="speed-select" title="Select Emulation Speed">
-          <option value="1">18.432 MHz (1x Real-Time)</option>
-          <option value="2">36.864 MHz (2x Turbo)</option>
-          <option value="4">73.728 MHz (4x Turbo)</option>
-          <option value="0.5">9.216 MHz (0.5x Half)</option>
-        </select>
+      <select id="speed-select" class="hidden" title="Clock Speed">
+        <option value="1">18.432 MHz</option>
+        <option value="2">36.864 MHz</option>
+        <option value="4">73.728 MHz</option>
+        <option value="0.5">9.216 MHz</option>
+      </select>
+
+      <div class="button-row titlebar-exec-btns">
+        <button id="btn-run-pause" class="btn btn-xs btn-primary" title="Run / Pause CPU Execution (F8)">Pause</button>
+        <button id="btn-assemble-run" class="btn btn-xs btn-success" title="Assemble, Load &amp; Run (F5)">&#9654; Run</button>
+        <button id="btn-step" class="btn btn-xs" title="Step Single Instruction (F10)">Step</button>
+        <button id="btn-reset" class="btn btn-xs btn-danger" title="Hardware Tactile Reset Button">Reset</button>
+
+        <!-- Hidden compatibility buttons -->
+        <button id="btn-assemble" class="hidden">Assemble</button>
+        <button id="btn-jog" class="hidden">Jog</button>
+        <button id="btn-walk" class="hidden">Walk</button>
+        <button id="btn-interrupt" class="hidden">Interrupt</button>
       </div>
 
-      <!-- SCWorkshop Execution & Build Toolbar -->
-      <div class="button-row exec-toolbar">
-        <button id="btn-assemble" class="btn btn-xs btn-accent" title="Assemble active .asm source file (F7)">&#9881; Assemble</button>
-        <button id="btn-assemble-run" class="btn btn-xs btn-success" title="Assemble, load into memory, and Run (F5)">&#9654; Build &amp; Run</button>
-        <span class="toolbar-sep"></span>
-        <button id="btn-run-pause" class="btn btn-xs btn-primary" title="Run at full clock speed or Pause CPU Execution">Pause</button>
-        <button id="btn-jog" class="btn btn-xs btn-toggle" title="Jog: Medium animated simulation (~600 instructions/sec) with live register &amp; screen updates">Jog</button>
-        <button id="btn-walk" class="btn btn-xs btn-toggle" title="Walk: Slow animated stepping (~12 instructions/sec) highlighting each source line &amp; recording Trace">Walk</button>
-        <button id="btn-step" class="btn btn-xs" title="Step: Execute a single Z80/Z180 instruction (F10)">Step</button>
-        <button id="btn-interrupt" class="btn btn-xs" title="Assert maskable hardware interrupt (/INT0 -> RST $38 in IM 1)">Interrupt</button>
-        <button id="btn-reset" class="btn btn-xs btn-danger" title="Press Hardware Tactile Reset Button">Reset (SW1)</button>
-      </div>
-
-      <!-- VS Code Workbench Layout Toggles -->
-      <div class="button-row layout-toolbar">
-        <button id="btn-toggle-sidebar" class="btn btn-xs btn-toggle active" title="Toggle Left Explorer / Tools Sidebar">Sidebar</button>
-        <button id="btn-toggle-split" class="btn btn-xs btn-toggle" title="Split Workbench Side-by-Side (Code Editor + Terminal)">&#10697; Split View</button>
-        <button id="btn-toggle-debugger" class="btn btn-xs btn-toggle active" title="Toggle Docked Bottom Debugger &amp; Trace Panel">Bottom Panel</button>
-        <button id="btn-toggle-hardware" class="btn btn-xs btn-toggle active" title="Toggle Right Hardware Enclosure &amp; I/O Sidebar">Hardware</button>
+      <!-- VS Code Layout Icons -->
+      <div class="layout-icon-group" aria-label="Workbench Layout">
+        <button id="btn-toggle-sidebar" class="layout-icon-btn active" title="Toggle Primary Sidebar (Ctrl+B)">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
+            <rect x="1.5" y="2" width="13" height="12" rx="1.5" />
+            <line x1="5.5" y1="2" x2="5.5" y2="14" />
+          </svg>
+        </button>
+        <button id="btn-toggle-split" class="layout-icon-btn" title="Toggle Side-by-Side Split View">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
+            <rect x="1.5" y="2" width="13" height="12" rx="1.5" />
+            <line x1="8" y1="2" x2="8" y2="14" />
+          </svg>
+        </button>
+        <button id="btn-toggle-debugger" class="layout-icon-btn active" title="Toggle Bottom Panel (Ctrl+J)">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
+            <rect x="1.5" y="2" width="13" height="12" rx="1.5" />
+            <line x1="1.5" y1="9.5" x2="14.5" y2="9.5" />
+          </svg>
+        </button>
+        <button id="btn-toggle-hardware" class="layout-icon-btn active" title="Toggle Hardware Enclosure Panel">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
+            <rect x="1.5" y="2" width="13" height="12" rx="1.5" />
+            <line x1="10.5" y1="2" x2="10.5" y2="14" />
+          </svg>
+        </button>
       </div>
     </div>
   </header>
@@ -131,7 +271,7 @@
           </div>
         </div>
 
-        <div class="sidebar-section">
+        <div id="sidebar-quicklaunch-section" class="sidebar-section">
           <div class="sidebar-section-title">Hardware OS &amp; ROM Quick Launch</div>
           <div class="sidebar-quicklaunch-note mono-xs text-muted">
             One-click boot on SC131 / SC126:
@@ -249,29 +389,6 @@
       <div id="workbench-panes" class="workbench-panes">
         <!-- Pane A: Serial Terminal Pane (Visible when 'terminal' tab active OR in Split View) -->
         <div id="pane-terminal" class="workbench-pane active-pane">
-          <!-- Quick Boot & Macro Bar -->
-          <div id="card-quickbar" class="card quickbar-card">
-            <div class="quickbar-row">
-              <span class="quickbar-label">Quick Launch:</span>
-              <button class="btn btn-xs" data-macro="2.0&#13;" title="Boot CP/M 2.2 from MicroSD Slice 0">SD0.0: CP/M 2.2</button>
-              <button class="btn btn-xs" data-macro="2.1&#13;" title="Boot ZSDOS 1.1 from MicroSD Slice 1">SD0.1: ZSDOS</button>
-              <button class="btn btn-xs" data-macro="2.2&#13;" title="Boot CP/M 3.0 from MicroSD Slice 2">SD0.2: CP/M 3</button>
-              <button class="btn btn-xs" data-macro="2.3&#13;" title="Boot Classic Games Slice (Zork, Adventure, Ladder)">SD0.3: Games</button>
-              <button class="btn btn-xs" data-macro="2.4&#13;" title="Boot WordStar 4 &amp; Office Slice">SD0.4: WordStar</button>
-              <button class="btn btn-xs" data-macro="2.5&#13;" title="Boot Turbo Pascal 3.0 Slice">SD0.5: Turbo Pascal</button>
-              <button class="btn btn-xs" data-macro="C&#13;" title="Boot CP/M 2.2 from ROM Disk">ROM CP/M</button>
-              <button class="btn btn-xs" data-macro="Z&#13;" title="Boot Z-System from ROM Disk">ROM Z-System</button>
-              <button class="btn btn-xs" data-macro="B&#13;&#13;" title="Launch Microsoft / NASCOM BASIC 4.7b">BASIC</button>
-              <button class="btn btn-xs" data-macro="T&#13;" title="Launch Tasty BASIC">Tasty BASIC</button>
-              <button class="btn btn-xs" data-macro="F&#13;" title="Launch CamelForth">Forth</button>
-              <button class="btn btn-xs" data-macro="P&#13;" title="Play Built-in 2048 Game">2048 Game</button>
-              <button class="btn btn-xs" data-macro="M&#13;" title="Launch RomWBW System Monitor">Monitor</button>
-              <button class="btn btn-xs" data-macro="S&#13;" title="List SD Card Slices at Boot Loader">Slices (S)</button>
-              <button id="btn-fuzix-launch" class="btn btn-xs" title="Mount Fuzix 0.4 Unix SDHC image and boot to login prompt (login: root)">Fuzix 0.4 Unix</button>
-              <button id="btn-led-demo" class="btn btn-xs btn-accent" title="Launch BASIC and run the hardware LED demo">LED1 Blink Demo</button>
-            </div>
-          </div>
-
           <!-- Dual VT100 / ANSI / Televideo Serial Terminal Card -->
           <div class="card terminal-card">
             <div class="card-header terminal-header">
@@ -287,6 +404,40 @@
               </div>
 
               <div class="terminal-toolbar">
+                <!-- Sleek Terminal Quick Boot Dropdown -->
+                <div class="terminal-quickboot-wrap">
+                  <button id="btn-quick-boot-term" class="btn btn-xs btn-accent quick-boot-btn" title="Quick boot an operating system or ROM application">
+                    &#9889; Quick Boot &blacktriangledown;
+                  </button>
+                  <div id="term-quickboot-menu" class="menubar-dropdown menu-dropdown-wide hidden">
+                    <div class="menu-header">MicroSD Slices (RomWBW)</div>
+                    <div class="menu-grid-2col">
+                      <button class="menu-action" data-macro="2.0&#13;">SD0.0: CP/M 2.2</button>
+                      <button class="menu-action" data-macro="2.1&#13;">SD0.1: ZSDOS</button>
+                      <button class="menu-action" data-macro="2.2&#13;">SD0.2: CP/M 3</button>
+                      <button class="menu-action" data-macro="2.3&#13;">SD0.3: Games (Zork, Adv)</button>
+                      <button class="menu-action" data-macro="2.4&#13;">SD0.4: WordStar 4</button>
+                      <button class="menu-action" data-macro="2.5&#13;">SD0.5: Turbo Pascal</button>
+                    </div>
+                    <div class="menu-divider"></div>
+                    <div class="menu-header">ROM Systems &amp; Languages</div>
+                    <div class="menu-grid-2col">
+                      <button class="menu-action" data-macro="C&#13;">ROM CP/M 2.2</button>
+                      <button class="menu-action" data-macro="Z&#13;">ROM Z-System</button>
+                      <button class="menu-action" data-macro="B&#13;&#13;">BASIC (Microsoft 4.7b)</button>
+                      <button class="menu-action" data-macro="T&#13;">Tasty BASIC</button>
+                      <button class="menu-action" data-macro="F&#13;">CamelForth</button>
+                      <button class="menu-action" data-macro="P&#13;">2048 Game</button>
+                      <button class="menu-action" data-macro="M&#13;">RomWBW Monitor</button>
+                      <button class="menu-action" data-macro="S&#13;">List SD Slices (S)</button>
+                    </div>
+                    <div class="menu-divider"></div>
+                    <div class="menu-header">Operating Systems &amp; Demos</div>
+                    <button class="menu-action" id="btn-fuzix-launch">&#128039; Fuzix 0.4 Unix OS (login: root)</button>
+                    <button class="menu-action" id="btn-led-demo">&#128161; Hardware LED Blink Demo</button>
+                  </div>
+                </div>
+
                 <select id="term-size-select" class="select-xs" title="Terminal Display Size">
                   <option value="sm">Compact (736&times;466)</option>
                   <option value="md">Medium (816&times;516)</option>
@@ -583,10 +734,10 @@
 
     <!-- Right Column: Hardware Enclosure, I/O Ports & Peripherals Sidebar -->
     <aside id="side-column" class="side-column vscode-right-sidebar">
-      <!-- Card 0: SCWorkshop Simulated I/O Ports (Port $00 LEDs & Input Switches) -->
-      <div id="hw-sim-io" class="card hardware-card">
+      <!-- Card 0: SCWorkshop Simulated I/O Ports (Port $00 LEDs & Input Switches, Visible ONLY on sim_z80) -->
+      <div id="hw-sim-io" class="card hardware-card hidden">
         <div class="card-header">
-          <h2>SCWorkshop Simulated I/O</h2>
+          <h2>Simulated I/O Ports</h2>
           <span class="mono-xs text-muted">Port $00 LEDs &amp; Switches</span>
         </div>
 
@@ -624,6 +775,28 @@
               <button type="button" class="sim-sw-btn" data-sw-bit="2"><span class="sw-lever">0</span><small>S2</small></button>
               <button type="button" class="sim-sw-btn" data-sw-bit="1"><span class="sw-lever">0</span><small>S1</small></button>
               <button type="button" class="sim-sw-btn" data-sw-bit="0"><span class="sw-lever">0</span><small>S0</small></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 0B: Simulated Z80 Architecture Card (Visible ONLY on sim_z80) -->
+      <div id="hw-card-sim-arch" class="card hardware-card hidden">
+        <div class="card-header">
+          <h2>Simulated Z80 Architecture</h2>
+          <span class="mono-xs text-muted">SCWorkshop Target</span>
+        </div>
+        <div class="sim-arch-content mono-xs">
+          <div class="sim-arch-row"><span>CPU Architecture:</span><strong>Zilog Z80 @ 4.0 MHz</strong></div>
+          <div class="sim-arch-row"><span>Address Space:</span><strong>64 KB Flat SRAM ($0000&ndash;$FFFF)</strong></div>
+          <div class="sim-arch-row"><span>Video CRT Display:</span><strong>Memory-Mapped $4000&ndash;$47FF (64&times;32)</strong></div>
+          <div class="sim-arch-row"><span>Line Printer:</span><strong>Output Port $03</strong></div>
+          <div class="sim-arch-row"><span>Serial Terminal:</span><strong>Port $01 (Tx) / Port $02 (Rx)</strong></div>
+          <div class="sim-arch-row" style="margin-top:8px; align-items:center;">
+            <span>Hardware Interrupt:</span>
+            <div class="reset-switch-row">
+              <button id="hw-sim-int-btn" class="tactile-reset-btn" title="Assert /INT0 Interrupt (calls vector $0038 in IM 1)"></button>
+              <span class="led-label">/INT0</span>
             </div>
           </div>
         </div>
@@ -904,18 +1077,22 @@
     </aside>
   </div>
 
-  <!-- VS Code Style Status Bar -->
+  <!-- VS Code Status Bar with Real Hardware & Editor Telemetry -->
   <footer class="vscode-statusbar mono-xs">
     <div class="statusbar-left">
-      <span id="sb-machine" class="sb-item sb-badge">SC131 Pocket Computer</span>
-      <span id="sb-mode" class="sb-item">Mode: RUN</span>
-      <span id="sb-pc" class="sb-item">PC: $0000</span>
-      <span id="sb-asm" class="sb-item">Assembler: Ready</span>
+      <span id="sb-machine" class="sb-item sb-badge" title="Active Target Architecture (Click to switch)">&#9247; SC131 (Z8S180)</span>
+      <span id="sb-cpu-state" class="sb-item" title="CPU Clock &amp; Execution State">&#9679; 18.43 MHz</span>
+      <span id="sb-pc" class="sb-item clickable" title="CPU Program Counter (Click to jump in disassembler)">PC: $0000</span>
+      <span id="sb-asm" class="sb-item clickable" title="Assembler Build Diagnostics">&check; Build OK</span>
+      <span id="sb-mode" class="hidden">Mode: RUN</span>
     </div>
     <div class="statusbar-right">
-      <span id="sb-split" class="sb-item">View: Single Pane</span>
-      <span id="sb-serial" class="sb-item">ASCI0: 115200 8N1</span>
-      <span class="sb-item">Small Computer Workshop Web IDE v2.0</span>
+      <span id="editor-cursor-pos" class="sb-item">Ln 1, Col 1</span>
+      <span class="sb-item">UTF-8</span>
+      <span id="sb-lang" class="sb-item">Z80 ASM</span>
+      <span id="sb-serial" class="sb-item" title="Serial Console Port A State">ASCI0: 115200 8N1</span>
+      <span id="sb-cycles" class="sb-item" title="Cumulative Clock Cycles Executed">0 cycles</span>
+      <span id="sb-split" class="hidden">View: Single Pane</span>
     </div>
   </footer>
 

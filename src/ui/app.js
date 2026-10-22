@@ -414,7 +414,9 @@ class SCWorkshopApp {
       fwGroup.style.display = isSim ? 'none' : 'flex';
     }
 
-    // Toggle hardware sidebar components
+    // Toggle hardware sidebar components strictly reflecting the selected machine
+    document.getElementById('hw-sim-io')?.classList.toggle('hidden', !isSim);
+    document.getElementById('hw-card-sim-arch')?.classList.toggle('hidden', !isSim);
     document.getElementById('hw-front-sc131')?.classList.toggle('hidden', is126 || isSim);
     document.getElementById('hw-front-sc126')?.classList.toggle('hidden', !is126);
     document.getElementById('hw-card-sd')?.classList.toggle('hidden', isSim);
@@ -422,9 +424,44 @@ class SCWorkshopApp {
     document.getElementById('pcb-grid-sc131')?.classList.toggle('hidden', is126 || isSim);
     document.getElementById('pcb-grid-sc126')?.classList.toggle('hidden', !is126);
 
+    // Hide sidebar OS/ROM quick launch when on Simulated Z80
+    document.getElementById('sidebar-quicklaunch-section')?.classList.toggle('hidden', isSim);
+
+    // Dynamic PCB and hardware titles reflecting machine
+    const pcbCardTitle = document.getElementById('pcb-card-title');
+    const pcbSilkLeft = document.getElementById('pcb-silk-left');
+    const pcbSilkRight = document.getElementById('pcb-silk-right');
+    const sdPortTitle = document.getElementById('sd-port-title');
+    if (pcbCardTitle) {
+      pcbCardTitle.textContent = is126 ? 'SC126 v1.1 Motherboard PCB' : 'SC131 v1.0 Motherboard PCB';
+    }
+    if (pcbSilkLeft) {
+      pcbSilkLeft.textContent = is126 ? 'SC126 v1.1 • S. C. Cousins' : 'SC131 v1.0 • S. C. Cousins';
+    }
+    if (pcbSilkRight) {
+      pcbSilkRight.textContent = is126 ? '160 × 100 mm RC2014' : '101.6 × 66.1 mm';
+    }
+    if (sdPortTitle) {
+      sdPortTitle.textContent = is126 ? 'P1 • SPI MicroSDHC Slot (Port 0x0C / RCBus)' : 'P1 • SPI MicroSDHC Slot (Port 0x0C / CSIO)';
+    }
+
+    // Update Topbar Breadcrumb Machine Part
+    const crumbMachine = document.getElementById('crumb-machine-name');
+    if (crumbMachine) {
+      crumbMachine.textContent = isSim ? 'Simulated Z80' : (is126 ? 'SC126 RCBus' : 'SC131 Pocket');
+    }
+
+    // Update Menu Bar Machine Checkmarks
+    const chk131 = document.getElementById('menu-chk-sc131');
+    const chk126 = document.getElementById('menu-chk-sc126');
+    const chkSim = document.getElementById('menu-chk-sim');
+    if (chk131) chk131.textContent = (!is126 && !isSim) ? '● ' : '○ ';
+    if (chk126) chk126.textContent = is126 ? '● ' : '○ ';
+    if (chkSim) chkSim.textContent = isSim ? '● ' : '○ ';
+
     const sbMachine = document.getElementById('sb-machine');
     if (sbMachine) {
-      sbMachine.textContent = isSim ? 'Simulated Z80 Computer' : (is126 ? 'SC126 RC2014 Motherboard' : 'SC131 Pocket Computer');
+      sbMachine.textContent = isSim ? '⎇ Simulated Z80 (4 MHz)' : (is126 ? '⎇ SC126 (Z8S180)' : '⎇ SC131 (Z8S180)');
     }
 
     this.updateLedsUI(this.board.getLeds());
@@ -480,6 +517,9 @@ class SCWorkshopApp {
 
     const nameTab = document.getElementById('tab-editor-filename');
     if (nameTab) nameTab.textContent = ex.name;
+
+    const crumbFile = document.getElementById('crumb-file-name');
+    if (crumbFile) crumbFile.textContent = ex.name;
 
     const sel = document.getElementById('example-select');
     if (sel && sel.value !== id) sel.value = id;
@@ -1865,6 +1905,288 @@ class SCWorkshopApp {
     });
 
     updateMemRangeDimensions();
+
+    // =========================================================================
+    // Native IDE Menu Bar & Quick Boot Dropdown Navigation
+    // =========================================================================
+    const menuItems = document.querySelectorAll('.menubar-item');
+    let activeMenu = null;
+
+    const closeAllMenus = () => {
+      menuItems.forEach((m) => m.classList.remove('open'));
+      document.getElementById('term-quickboot-menu')?.classList.add('hidden');
+      activeMenu = null;
+    };
+
+    menuItems.forEach((item) => {
+      const btn = item.querySelector('.menubar-btn');
+      btn?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (item.classList.contains('open')) {
+          closeAllMenus();
+        } else {
+          closeAllMenus();
+          item.classList.add('open');
+          activeMenu = item;
+        }
+      });
+
+      item.addEventListener('mouseenter', () => {
+        if (activeMenu && activeMenu !== item) {
+          closeAllMenus();
+          item.classList.add('open');
+          activeMenu = item;
+        }
+      });
+    });
+
+    // Terminal Quick Boot Dropdown
+    const termQuickBtn = document.getElementById('btn-quick-boot-term');
+    const termQuickMenu = document.getElementById('term-quickboot-menu');
+    termQuickBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeAllMenus();
+      termQuickMenu?.classList.toggle('hidden');
+    });
+
+    // Close open menus when clicking outside
+    window.addEventListener('click', (e) => {
+      if (!e.target.closest('.menubar-item') && !e.target.closest('.terminal-quickboot-wrap')) {
+        closeAllMenus();
+      }
+    });
+
+    // Close open menus on Escape key
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeAllMenus();
+    });
+
+    // Wire Menu File Actions
+    document.getElementById('menu-file-new')?.addEventListener('click', () => {
+      closeAllMenus();
+      document.getElementById('btn-new-asm')?.click();
+    });
+
+    document.getElementById('asm-file-input-menu')?.addEventListener('change', (e) => {
+      closeAllMenus();
+      const file = e.target.files?.[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          const content = evt.target?.result;
+          if (typeof content === 'string') {
+            this.currentAsmFileName = file.name;
+            const textarea = document.getElementById('asm-editor-textarea');
+            if (textarea) textarea.value = content;
+            const nameTab = document.getElementById('tab-editor-filename');
+            if (nameTab) nameTab.textContent = file.name;
+            const crumbFile = document.getElementById('crumb-file-name');
+            if (crumbFile) crumbFile.textContent = file.name;
+            this.syncEditorGutter();
+            this.assembleCurrentSource({ silent: true });
+            this.switchCenterTab('editor');
+          }
+        };
+        reader.readAsText(file);
+      }
+    });
+
+    document.getElementById('menu-file-save-asm')?.addEventListener('click', () => {
+      closeAllMenus();
+      document.getElementById('btn-download-asm')?.click();
+    });
+    document.getElementById('menu-file-save-hex')?.addEventListener('click', () => {
+      closeAllMenus();
+      document.getElementById('btn-download-hex')?.click();
+    });
+    document.getElementById('menu-file-save-lst')?.addEventListener('click', () => {
+      closeAllMenus();
+      document.getElementById('btn-download-lst')?.click();
+    });
+
+    // Wire Menu Edit Actions
+    document.getElementById('menu-edit-conv')?.addEventListener('click', () => {
+      closeAllMenus();
+      this.switchSidebarView('tools');
+    });
+    document.getElementById('menu-edit-clear-term')?.addEventListener('click', () => {
+      closeAllMenus();
+      document.getElementById('btn-clear-term')?.click();
+    });
+    document.getElementById('menu-edit-copy-term')?.addEventListener('click', () => {
+      closeAllMenus();
+      document.getElementById('btn-copy-screen')?.click();
+    });
+    document.getElementById('menu-edit-paste-term')?.addEventListener('click', () => {
+      closeAllMenus();
+      document.getElementById('btn-paste')?.click();
+    });
+
+    // Wire Menu View Actions
+    document.getElementById('menu-view-sidebar')?.addEventListener('click', () => {
+      closeAllMenus();
+      this.setSidebarVisible(!this.sidebarVisible);
+    });
+    document.getElementById('menu-view-split')?.addEventListener('click', () => {
+      closeAllMenus();
+      this.toggleSplitMode();
+    });
+    document.getElementById('menu-view-panel')?.addEventListener('click', () => {
+      closeAllMenus();
+      this.setDebuggerVisible(!this.debuggerVisible);
+    });
+    document.getElementById('menu-view-hardware')?.addEventListener('click', () => {
+      closeAllMenus();
+      this.setHardwareSidebarVisible(!this.hardwareSidebarVisible);
+    });
+    document.getElementById('menu-view-term-tab')?.addEventListener('click', () => {
+      closeAllMenus();
+      this.switchCenterTab('terminal');
+    });
+    document.getElementById('menu-view-editor-tab')?.addEventListener('click', () => {
+      closeAllMenus();
+      this.switchCenterTab('editor');
+    });
+    document.getElementById('menu-view-sim-periph')?.addEventListener('click', () => {
+      closeAllMenus();
+      this.switchCenterTab('peripherals');
+    });
+
+    // Wire Menu Machine & Firmware & Speed Picks
+    document.querySelectorAll('[data-machine-pick]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        closeAllMenus();
+        const m = btn.getAttribute('data-machine-pick');
+        if (m) this.switchMachine(m);
+      });
+    });
+
+    document.querySelectorAll('[data-fw-pick]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        closeAllMenus();
+        const fw = btn.getAttribute('data-fw-pick');
+        if (fw) {
+          const fwSel = document.getElementById('firmware-select');
+          if (fwSel) fwSel.value = fw;
+          this.switchFirmware(fw);
+        }
+      });
+    });
+
+    document.querySelectorAll('[data-speed-pick]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        closeAllMenus();
+        const sp = btn.getAttribute('data-speed-pick');
+        if (sp) {
+          this.speedMultiplier = parseFloat(sp) || 1.0;
+          this.clockMultiplier = this.speedMultiplier;
+          const spSel = document.getElementById('speed-select');
+          if (spSel) spSel.value = sp;
+          this.updateInspectorUI(true);
+        }
+      });
+    });
+
+    // Wire Menu Quick Boot special actions
+    document.getElementById('menu-launch-fuzix')?.addEventListener('click', () => {
+      closeAllMenus();
+      this.launchFuzix();
+    });
+    document.getElementById('menu-launch-led-demo')?.addEventListener('click', () => {
+      closeAllMenus();
+      this.runLedBlinkDemo();
+    });
+
+    // Wire Menu Run Actions
+    document.getElementById('menu-run-assemble-run')?.addEventListener('click', () => {
+      closeAllMenus();
+      this.buildAndRun();
+    });
+    document.getElementById('menu-run-assemble')?.addEventListener('click', () => {
+      closeAllMenus();
+      this.assembleCurrentSource();
+    });
+    document.getElementById('menu-run-pause')?.addEventListener('click', () => {
+      closeAllMenus();
+      document.getElementById('btn-run-pause')?.click();
+    });
+    document.getElementById('menu-run-step')?.addEventListener('click', () => {
+      closeAllMenus();
+      this.stepSingleInstruction();
+    });
+    document.getElementById('menu-run-walk')?.addEventListener('click', () => {
+      closeAllMenus();
+      this.setSimulationMode(this.simulationMode === 'walk' ? 'paused' : 'walk');
+    });
+    document.getElementById('menu-run-jog')?.addEventListener('click', () => {
+      closeAllMenus();
+      this.setSimulationMode(this.simulationMode === 'jog' ? 'paused' : 'jog');
+    });
+    document.getElementById('menu-run-interrupt')?.addEventListener('click', () => {
+      closeAllMenus();
+      if (this.board?.triggerInt0) {
+        this.board.triggerInt0();
+        this.updateInspectorUI(true);
+      }
+    });
+    document.getElementById('menu-run-reset')?.addEventListener('click', () => {
+      closeAllMenus();
+      this.triggerHardwareResetPulse(220);
+    });
+
+    // Simulated Z80 Hardware Interrupt Push Button
+    document.getElementById('hw-sim-int-btn')?.addEventListener('click', () => {
+      if (this.board?.triggerInt0) {
+        this.board.triggerInt0();
+        const btn = document.getElementById('hw-sim-int-btn');
+        btn?.classList.add('active');
+        setTimeout(() => btn?.classList.remove('active'), 180);
+        this.updateInspectorUI(true);
+      }
+    });
+
+    // Clickable Status Bar items
+    document.getElementById('sb-machine')?.addEventListener('click', () => {
+      // Cycle through machines
+      const next = this.machineType === 'sc131' ? 'sc126' : (this.machineType === 'sc126' ? 'sim_z80' : 'sc131');
+      this.switchMachine(next);
+    });
+
+    document.getElementById('sb-pc')?.addEventListener('click', () => {
+      this.setDebuggerVisible(true);
+      this.switchBottomTab('disasm');
+      document.getElementById('btn-disasm-pc')?.click();
+    });
+
+    document.getElementById('sb-asm')?.addEventListener('click', () => {
+      this.setDebuggerVisible(true);
+      this.switchBottomTab('problems');
+    });
+
+    // Global IDE Keyboard Shortcuts
+    window.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
+
+      if (e.key === 'F5') {
+        e.preventDefault();
+        this.buildAndRun();
+      } else if (e.key === 'F7') {
+        e.preventDefault();
+        this.assembleCurrentSource();
+      } else if (e.key === 'F8') {
+        e.preventDefault();
+        document.getElementById('btn-run-pause')?.click();
+      } else if (e.key === 'F10') {
+        e.preventDefault();
+        this.stepSingleInstruction();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'b' || e.key === 'B')) {
+        e.preventDefault();
+        this.setSidebarVisible(!this.sidebarVisible);
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'j' || e.key === 'J')) {
+        e.preventDefault();
+        this.setDebuggerVisible(!this.debuggerVisible);
+      }
+    });
   }
 
   renderVisibleMemoryHex() {
@@ -1907,8 +2229,12 @@ class SCWorkshopApp {
 
   updateRunPauseButton() {
     const btn = document.getElementById('btn-run-pause');
-    if (!btn) return;
-    btn.textContent = this.running ? 'Pause' : 'Run';
+    if (btn) btn.textContent = this.running ? 'Pause' : 'Run';
+    const menuRunPause = document.getElementById('menu-run-pause');
+    if (menuRunPause) {
+      const label = menuRunPause.querySelector('span:first-child');
+      if (label) label.textContent = this.running ? 'Pause CPU' : 'Resume CPU';
+    }
   }
 
   updateStatusPill() {
@@ -1937,6 +2263,28 @@ class SCWorkshopApp {
 
     const sbPc = document.getElementById('sb-pc');
     if (sbPc) sbPc.textContent = `PC: $${hex4(this.board.cpu.pc)}`;
+
+    const sbCpuState = document.getElementById('sb-cpu-state');
+    if (sbCpuState) {
+      if (this.board.isHeldInReset()) {
+        sbCpuState.textContent = '↺ In Reset';
+      } else if (this.simulationMode === 'walk') {
+        sbCpuState.textContent = '🚶 Walk (~12 ips)';
+      } else if (this.simulationMode === 'jog') {
+        sbCpuState.textContent = '⚡ Jog (~600 ips)';
+      } else if (this.running) {
+        const mhz = ((this.board.cpu.getPhiHz() * this.speedMultiplier) / 1e6).toFixed(2);
+        sbCpuState.textContent = `● ${mhz} MHz`;
+      } else {
+        sbCpuState.textContent = '⏸ Paused';
+      }
+    }
+
+    const sbCycles = document.getElementById('sb-cycles');
+    if (sbCycles) {
+      const cyc = this.board.cpu.cycles;
+      sbCycles.textContent = cyc >= 1_000_000 ? `${(cyc / 1_000_000).toFixed(2)}M cycles` : `${cyc.toLocaleString()} cycles`;
+    }
   }
 
   startLoop() {
