@@ -914,18 +914,19 @@ class SCWorkshopApp {
       tab.classList.toggle('active', tab.getAttribute('data-center-tab') === tabKey);
     });
 
-    if (this.splitMode) {
+    if (this.splitMode && (tabKey === 'terminal' || tabKey === 'editor')) {
       // In split mode, terminal and editor are both displayed side-by-side
       document.getElementById('pane-terminal')?.classList.remove('hidden');
       document.getElementById('pane-editor')?.classList.remove('hidden');
       document.getElementById('pane-listing')?.classList.add('hidden');
       document.getElementById('pane-hexout')?.classList.add('hidden');
       document.getElementById('pane-peripherals')?.classList.add('hidden');
+      document.getElementById('pane-tutorial')?.classList.add('hidden');
       return;
     }
 
-    // Single-pane mode
-    const panes = ['terminal', 'editor', 'listing', 'hexout', 'peripherals'];
+    // Single-pane mode or non-split tab selected
+    const panes = ['terminal', 'editor', 'listing', 'hexout', 'peripherals', 'tutorial'];
     panes.forEach((p) => {
       const el = document.getElementById(`pane-${p}`);
       el?.classList.toggle('hidden', p !== tabKey);
@@ -2163,11 +2164,134 @@ class SCWorkshopApp {
       this.switchBottomTab('problems');
     });
 
+    // Tutorial & Guide Action Triggers
+    document.getElementById('menu-help-tutorial')?.addEventListener('click', () => {
+      closeAllMenus();
+      this.switchCenterTab('tutorial');
+    });
+
+    document.getElementById('activity-tutorial-btn')?.addEventListener('click', () => {
+      this.switchCenterTab('tutorial');
+    });
+
+    document.getElementById('tut-btn-launch-demo')?.addEventListener('click', () => {
+      this.runTutorialWalkthroughTest();
+    });
+
+    document.getElementById('btn-hero-run-test')?.addEventListener('click', () => {
+      this.runTutorialWalkthroughTest();
+    });
+
+    document.getElementById('tut-btn-open-editor')?.addEventListener('click', () => {
+      this.switchCenterTab('editor');
+    });
+
+    document.getElementById('tut-btn-open-terminal')?.addEventListener('click', () => {
+      this.switchCenterTab('terminal');
+    });
+
+    // Tutorial Action Buttons
+    document.querySelectorAll('[data-tut-action]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const act = btn.getAttribute('data-tut-action');
+        switch (act) {
+          case 'load-sc126':
+            await this.switchMachine('sc126', false);
+            this.loadExampleById('scm_led_show');
+            this.switchCenterTab('editor');
+            break;
+          case 'load-sc131':
+            await this.switchMachine('sc131', false);
+            this.loadExampleById('sc131_led1_blink');
+            this.switchCenterTab('editor');
+            break;
+          case 'load-simz80':
+            await this.switchMachine('sim_z80', false);
+            this.loadExampleById('scw_count');
+            this.switchCenterTab('editor');
+            break;
+          case 'assemble':
+            this.assembleCurrentSource();
+            this.switchCenterTab('editor');
+            break;
+          case 'view-listing':
+            this.assembleCurrentSource({ silent: true });
+            this.switchCenterTab('listing');
+            break;
+          case 'view-hexout':
+            this.assembleCurrentSource({ silent: true });
+            this.switchCenterTab('hexout');
+            break;
+          case 'walk':
+            this.setSimulationMode(this.simulationMode === 'walk' ? 'paused' : 'walk');
+            break;
+          case 'jog':
+            this.setSimulationMode(this.simulationMode === 'jog' ? 'paused' : 'jog');
+            break;
+          case 'step':
+            this.stepSingleInstruction();
+            break;
+          case 'run':
+            this.setSimulationMode('run');
+            break;
+          case 'pause':
+            this.setSimulationMode('paused');
+            break;
+          case 'open-trace':
+            this.setDebuggerVisible(true);
+            this.switchBottomTab('trace');
+            break;
+          case 'clear-trace':
+            this.traceEntries = [];
+            this.renderTraceUI();
+            break;
+          case 'open-disasm':
+            this.setDebuggerVisible(true);
+            this.switchBottomTab('disasm');
+            document.getElementById('btn-disasm-pc')?.click();
+            break;
+          case 'disasm-8000':
+            this.setDebuggerVisible(true);
+            this.switchBottomTab('disasm');
+            this.disasmBaseAddr = 0x8000;
+            this.updateDisasmUI();
+            break;
+          case 'open-memory-8000':
+            this.setDebuggerVisible(true);
+            this.switchBottomTab('memory');
+            document.querySelector('[data-mem-jump="8000"]')?.click();
+            break;
+          case 'open-memory-0000':
+            this.setDebuggerVisible(true);
+            this.switchBottomTab('memory');
+            document.querySelector('[data-mem-jump="0000"]')?.click();
+            break;
+          case 'open-memory-pc':
+            this.setDebuggerVisible(true);
+            this.switchBottomTab('memory');
+            document.querySelector('[data-mem-reg="pc"]')?.click();
+            break;
+          case 'toggle-split':
+            this.toggleSplitMode();
+            break;
+          case 'open-convert':
+            this.switchSidebarView('tools');
+            break;
+          case 'open-peripherals':
+            this.switchCenterTab('peripherals');
+            break;
+        }
+      });
+    });
+
     // Global IDE Keyboard Shortcuts
     window.addEventListener('keydown', (e) => {
       if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
 
-      if (e.key === 'F5') {
+      if (e.key === 'F1') {
+        e.preventDefault();
+        this.switchCenterTab('tutorial');
+      } else if (e.key === 'F5') {
         e.preventDefault();
         this.buildAndRun();
       } else if (e.key === 'F7') {
@@ -2187,6 +2311,56 @@ class SCWorkshopApp {
         this.setDebuggerVisible(!this.debuggerVisible);
       }
     });
+  }
+
+  async runTutorialWalkthroughTest() {
+    const box = document.getElementById('tut-walkthrough-box');
+    box?.classList.remove('hidden');
+
+    const setStepState = (num, state) => {
+      const el = document.getElementById(`tut-step-status-${num}`);
+      if (el) {
+        el.className = `tut-progress-step ${state}`;
+      }
+    };
+
+    // Step 1: Select SC126 Z180 RC2014 Motherboard target
+    setStepState(1, 'active');
+    await this.switchMachine('sc126', false);
+    setStepState(1, 'done');
+
+    // Step 2: Load SCM_LED_Light_Show.asm into Code Editor
+    setStepState(2, 'active');
+    this.loadExampleById('scm_led_show');
+    setStepState(2, 'done');
+
+    // Step 3: Run Two-Pass Assembler & write machine code to RAM $8000
+    setStepState(3, 'active');
+    const res = this.assembleCurrentSource({ silent: true });
+    if (res.ok) {
+      this.loadProgramIntoMemory({ setPc: true });
+    }
+    setStepState(3, 'done');
+
+    // Step 4: Switch workbench to Split View (Editor + Terminal)
+    setStepState(4, 'active');
+    if (!this.splitMode) this.toggleSplitMode();
+    setStepState(4, 'done');
+
+    // Step 5: Start animated Walk mode (~12 ips) & highlight executing lines
+    setStepState(5, 'active');
+    this.setSimulationMode('walk');
+    for (let i = 0; i < 6; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 140));
+    }
+    this.setSimulationMode('paused');
+    setStepState(5, 'done');
+
+    // Step 6: Open Bottom Panel to Simulation Trace to verify recorded steps
+    setStepState(6, 'active');
+    this.setDebuggerVisible(true);
+    this.switchBottomTab('trace');
+    setStepState(6, 'done');
   }
 
   renderVisibleMemoryHex() {

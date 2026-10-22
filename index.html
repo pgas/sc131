@@ -126,6 +126,8 @@
         <div class="menubar-item" data-menu="help">
           <button class="menubar-btn" aria-haspopup="true">Help</button>
           <div class="menubar-dropdown">
+            <button class="menu-action" id="menu-help-tutorial"><span>&#128214; Workshop Tutorial &amp; Guide</span> <span class="menu-shortcut">F1</span></button>
+            <div class="menu-divider"></div>
             <a class="menu-action" href="https://smallcomputercentral.com/small-computer-workshop/" target="_blank" rel="noopener">Small Computer Workshop Guide &#8599;</a>
             <a class="menu-action" href="https://smallcomputercentral.com/sc131-z180-pocket-computer/" target="_blank" rel="noopener">SC131 Pocket Computer Reference &#8599;</a>
             <a class="menu-action" href="https://smallcomputercentral.com/rcbus/sc100-series/sc126-z180-motherboard-rc2014/" target="_blank" rel="noopener">SC126 Motherboard Reference &#8599;</a>
@@ -233,6 +235,10 @@
         <span class="activity-label">Convert</span>
       </button>
       <div class="activity-spacer"></div>
+      <button id="activity-tutorial-btn" class="activity-btn" title="Open Interactive Step-by-Step Tutorial &amp; Workshop Guide (F1)">
+        <span class="activity-icon">&#128214;</span>
+        <span class="activity-label">Guide</span>
+      </button>
       <button id="activity-split-btn" class="activity-btn" title="Toggle Side-by-Side Split View (Editor + Terminal)">
         <span class="activity-icon">&#10697;</span>
         <span class="activity-label">Split</span>
@@ -374,6 +380,9 @@
           </button>
           <button class="vscode-tab" data-center-tab="peripherals" title="SCWorkshop Memory-Mapped Screen ($4000) &amp; Line Printer (Port $03)">
             Sim Screen &amp; Printer
+          </button>
+          <button class="vscode-tab" data-center-tab="tutorial" title="Interactive Step-by-Step Tutorial &amp; Workshop Reference Guide">
+            <span class="tab-icon">&#128214;</span> Tutorial &amp; Guide
           </button>
         </div>
 
@@ -582,6 +591,259 @@
               <div class="sim-printer-box">
                 <div class="hexout-box-title mono-xs">Simulated Line Printer Output (Port $03)</div>
                 <pre id="sim-printer-view" class="sim-printer-paper mono-xs"></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pane F: Workshop Interactive Step-by-Step Tutorial & Guide -->
+        <div id="pane-tutorial" class="workbench-pane hidden">
+          <div class="card tutorial-card">
+            <div class="editor-toolbar tutorial-toolbar">
+              <div class="editor-toolbar-left">
+                <span class="tab-icon">&#128214;</span>
+                <strong class="mono-sm">Small Computer Workshop (SCW) &mdash; Interactive Tutorial &amp; Guide</strong>
+              </div>
+              <div class="editor-toolbar-right">
+                <button id="tut-btn-launch-demo" class="btn btn-xs btn-success" title="Run full automated LED walkthrough (loads SC126, Knight Rider .asm, assembles, steps and displays trace)">
+                  &#9654; Run Interactive LED Walkthrough Test
+                </button>
+                <button id="tut-btn-open-editor" class="btn btn-xs" title="Switch to Source Editor tab">Open Editor</button>
+                <button id="tut-btn-open-terminal" class="btn btn-xs" title="Switch to Serial Terminal tab">Open Terminal</button>
+              </div>
+            </div>
+
+            <div class="tutorial-body">
+              <div class="tutorial-container">
+                <!-- Hero Introduction -->
+                <div class="tutorial-hero">
+                  <h2><span>&#128187;</span> Welcome to Small Computer Workshop (SCW)</h2>
+                  <p>
+                    Small Computer Workshop is an integrated development environment (IDE) originally designed by <strong>Stephen C. Cousins</strong> for developing Z80 and Z180 assembly language software.
+                    This web edition combines an in-browser <strong>Z80/Z180 Source Editor</strong>, a built-in <strong>two-pass Assembler</strong>, an animated <strong>Simulator &amp; Cycle-Accurate Hardware Emulator</strong> (SC131 Pocket Computer, SC126 RCBus Motherboard, and Simulated Z80), an interactive <strong>Disassembler</strong>, a <strong>512 KB Memory Hex Viewer</strong>, a step-by-step <strong>Instruction Trace Recorder</strong>, and live <strong>Hardware Diagnostics</strong>.
+                  </p>
+                  <div class="tutorial-hero-actions">
+                    <button class="btn btn-xs btn-success" id="btn-hero-run-test">&#9654; Start Interactive LED Walkthrough Test</button>
+                    <button class="btn btn-xs btn-tut-action" data-tut-action="toggle-split">&#10697; Toggle Side-by-Side Split View</button>
+                    <button class="btn btn-xs btn-tut-action" data-tut-action="load-sc126">&#128161; Load SC126 LED Demo</button>
+                  </div>
+
+                  <!-- Live Walkthrough Progress Box (Hidden until triggered) -->
+                  <div id="tut-walkthrough-box" class="tut-walkthrough-progress hidden">
+                    <div class="tut-step-title mono-xs" style="color:#fbbf24;">Interactive Test Execution:</div>
+                    <div id="tut-step-status-1" class="tut-progress-step"><span>1.</span> Select SC126 Z180 RC2014 Motherboard target</div>
+                    <div id="tut-step-status-2" class="tut-progress-step"><span>2.</span> Load SCM_LED_Light_Show.asm into Code Editor</div>
+                    <div id="tut-step-status-3" class="tut-progress-step"><span>3.</span> Run Two-Pass Assembler &amp; write machine code to RAM $8000</div>
+                    <div id="tut-step-status-4" class="tut-progress-step"><span>4.</span> Switch workbench to Split View (Editor + Terminal)</div>
+                    <div id="tut-step-status-5" class="tut-progress-step"><span>5.</span> Start animated Walk mode (~12 ips) &amp; highlight executing lines</div>
+                    <div id="tut-step-status-6" class="tut-progress-step"><span>6.</span> Open Bottom Panel to Simulation Trace to verify recorded steps</div>
+                  </div>
+                </div>
+
+                <!-- Step 1: Choosing a Machine & Loading Examples -->
+                <div class="tut-step">
+                  <div class="tut-step-header">
+                    <span class="tut-step-num">1</span>
+                    <span class="tut-step-title">Choosing Your Target Machine &amp; Architecture</span>
+                  </div>
+                  <p>
+                    The workshop supports three distinct target computers. Select your target using the top titlebar dropdown or the <strong>Machine</strong> menu:
+                  </p>
+                  <ul>
+                    <li>
+                      <strong>SC131 Z180 Pocket Computer</strong>: Portable Z8S180 microcomputer @ 18.432 MHz, 512 KB Flash ROM, 512 KB SRAM, SPI MicroSDHC card slot, dual ASCI serial ports, DS1233-5+ voltage supervisor, and Orange Status LED1 on Port $0E bit 2. Runs RomWBW v3.6.0, CP/M, and Fuzix Unix.
+                    </li>
+                    <li>
+                      <strong>SC126 Z180 RC2014 Motherboard</strong>: RCBus / RC2014 modular motherboard with Z8S180 CPU, Port $0D (13) 8-LED diagnostic bar (74HCT273), and Dallas DS1302 Real-Time Clock with battery-backed NVRAM.
+                    </li>
+                    <li>
+                      <strong>Simulated Z80 Computer</strong>: SCWorkshop's classic educational target with flat 64 KB RAM, Port $00 8-LED output bar and 8-bit interactive toggle switches, 64&times;32 memory-mapped character display at $4000&ndash;$47FF, line printer at Port $03, and hardware <code>/INT0</code> push button.
+                    </li>
+                  </ul>
+                  <div class="tut-callout tip">
+                    <strong>Tip:</strong> The Right Hardware Sidebar dynamically adapts to the selected machine, showing only real physical components for that board!
+                  </div>
+                  <div class="tut-action-row">
+                    <button class="btn btn-xs btn-tut-action" data-tut-action="load-sc126">Load SC126 Knight Rider LED Demo ($8000)</button>
+                    <button class="btn btn-xs btn-tut-action" data-tut-action="load-sc131">Load SC131 Status LED Blink Demo ($8000)</button>
+                    <button class="btn btn-xs btn-tut-action" data-tut-action="load-simz80">Load Simulated Z80 Count Demo ($0000)</button>
+                  </div>
+                </div>
+
+                <!-- Step 2: Using the Code Editor & Two-Pass Assembler -->
+                <div class="tut-step">
+                  <div class="tut-step-header">
+                    <span class="tut-step-num">2</span>
+                    <span class="tut-step-title">Using the Code Editor &amp; Two-Pass Assembler</span>
+                  </div>
+                  <p>
+                    Switch to the <strong>Source Editor</strong> tab to write or inspect assembly code. The editor features a line gutter, error markers, automatic 4-space Tab indentation, and live cursor position telemetry (Ln/Col in the status bar).
+                  </p>
+                  <p>Essential SCWorkshop assembly directives:</p>
+                  <pre class="tut-code">            #TARGET     SC126           ; Sets architecture: SC126, SC131, or Simulated_Z80
+            .PROC       Z180            ; Enables Z180 opcodes: MLT, IN0, OUT0, TST, OTIMR
+            .ORG        8000h           ; Sets origin address ($8000 in RAM or $0000)
+
+DiagPort:   .EQU        0Dh             ; Port 13: SC126 8-LED Diagnostic Bar
+Start:      LD   B, 4                   ; Loop 4 times
+ScanLoop:   LD   A, 01h                 ; Start with bit 0 (LED L0)
+ShiftLeft:  OUT  (DiagPort), A          ; Output byte to Port $0D LEDs!
+            CALL Delay                  ; Software delay loop
+            RLCA                        ; Rotate left to next LED bit
+            JR   NC, ShiftLeft
+            .END</pre>
+                  <div class="tut-callout">
+                    <strong>Two-Pass Assembly:</strong> Press <kbd>F7</kbd> or click <strong>&#9881; Assemble</strong>. Pass 1 calculates symbol addresses and evaluates expressions (supporting <code>$</code>, <code>%</code>, <code>0x</code>, <code>h</code>, <code>HIGH</code>, <code>LOW</code>). Pass 2 generates machine code and produces:
+                    <ul style="margin:4px 0 0 16px;">
+                      <li><strong>Listing.txt</strong>: Machine code bytes alongside source lines with clickable breakpoint markers.</li>
+                      <li><strong>IntelHex.hex</strong>: Industry-standard Intel HEX records for burning or serial transfer.</li>
+                      <li><strong>Memory.txt &amp; Symbols.txt</strong>: Hex byte dumps and resolved symbol tables.</li>
+                    </ul>
+                  </div>
+                  <div class="tut-action-row">
+                    <button class="btn btn-xs btn-tut-action" data-tut-action="assemble">&#9881; Assemble Current Code (F7)</button>
+                    <button class="btn btn-xs btn-tut-action" data-tut-action="view-listing">Inspect Listing.txt</button>
+                    <button class="btn btn-xs btn-tut-action" data-tut-action="view-hexout">Inspect IntelHex.hex</button>
+                  </div>
+                </div>
+
+                <!-- Step 3: Four Simulation & Execution Modes -->
+                <div class="tut-step">
+                  <div class="tut-step-header">
+                    <span class="tut-step-num">3</span>
+                    <span class="tut-step-title">Executing Code: Run, Jog, Walk &amp; Step</span>
+                  </div>
+                  <p>
+                    The workshop provides 4 simulation speeds so you can choose between maximum execution throughput and detailed instructional stepping:
+                  </p>
+                  <ul>
+                    <li>
+                      <strong>Run (F5 / F8)</strong>: Full-speed hardware emulation (18.432 MHz real-time or turbo). Perfect for running RomWBW, CP/M, WordStar, and Fuzix Unix.
+                    </li>
+                    <li>
+                      <strong>Jog Mode (~600 instructions/sec)</strong>: Medium animated speed. Watch registers and LEDs shift rapidly while maintaining smooth visual updates.
+                    </li>
+                    <li>
+                      <strong>Walk Mode (~12 instructions/sec)</strong>: Educational stepping mode! Highlights the executing source line in gold in the editor, pulses the hardware LEDs, updates the CPU registers, and appends each instruction to the Trace buffer.
+                    </li>
+                    <li>
+                      <strong>Step (F10)</strong>: Single instruction execution. Executes one Z80/Z180 opcode and halts immediately.
+                    </li>
+                  </ul>
+                  <div class="tut-action-row">
+                    <button class="btn btn-xs btn-tut-action" data-tut-action="walk">&#128694; Start Walk Mode (~12 ips)</button>
+                    <button class="btn btn-xs btn-tut-action" data-tut-action="jog">&#9889; Start Jog Mode (~600 ips)</button>
+                    <button class="btn btn-xs btn-tut-action" data-tut-action="step">&#8631; Step Single Instruction (F10)</button>
+                    <button class="btn btn-xs btn-tut-action" data-tut-action="run">&#9654; Run Full Speed (F5)</button>
+                    <button class="btn btn-xs btn-tut-action" data-tut-action="pause">&#9208; Pause CPU (F8)</button>
+                  </div>
+                </div>
+
+                <!-- Step 4: Viewing the Simulation Trace -->
+                <div class="tut-step">
+                  <div class="tut-step-header">
+                    <span class="tut-step-num">4</span>
+                    <span class="tut-step-title">Viewing the Simulation Trace</span>
+                  </div>
+                  <p>
+                    During <strong>Step</strong>, <strong>Walk</strong>, and <strong>Jog</strong> modes, the workshop records a cycle-by-cycle instruction trace in the docked bottom panel (<kbd>Ctrl+J</kbd>).
+                  </p>
+                  <p>
+                    Each trace row displays the exact CPU state before instruction execution:
+                  </p>
+                  <ul>
+                    <li><code>STEP</code>: Sequential instruction execution count.</li>
+                    <li><code>PC</code>: 16-bit program counter address (e.g. <code>$8007</code>).</li>
+                    <li><code>BYTES</code>: Hex opcode and operand bytes (e.g. <code>D3 0D</code> for <code>OUT (0Dh), A</code>).</li>
+                    <li><code>INSTRUCTION</code>: Disassembled Z80 mnemonic with symbolic operands.</li>
+                    <li><code>AF, BC, DE, HL, SP</code>: 16-bit register states.</li>
+                    <li><code>FLAGS</code>: CPU flag bits (<code>SZ5H3PNC</code>: Sign, Zero, Half-Carry, Parity/Overflow, Add/Subtract, Carry).</li>
+                  </ul>
+                  <div class="tut-callout tip">
+                    Use trace to verify algorithm logic, identify runaway loops, or audit peripheral I/O writes.
+                  </div>
+                  <div class="tut-action-row">
+                    <button class="btn btn-xs btn-tut-action" data-tut-action="open-trace">Open Simulation Trace Panel</button>
+                    <button class="btn btn-xs btn-tut-action" data-tut-action="clear-trace">Clear Trace Buffer</button>
+                  </div>
+                </div>
+
+                <!-- Step 5: Using the Disassembler & Setting Breakpoints -->
+                <div class="tut-step">
+                  <div class="tut-step-header">
+                    <span class="tut-step-num">5</span>
+                    <span class="tut-step-title">Using the Disassembler &amp; Setting Breakpoints</span>
+                  </div>
+                  <p>
+                    The built-in disassembler decodes instructions directly from target memory, including all standard Z80 and Z180 extended opcodes (such as <code>MLT</code>, <code>IN0</code>, <code>OUT0</code>, <code>TST</code>).
+                  </p>
+                  <ul>
+                    <li><strong>Jump to Current PC (<code>@PC</code>)</strong>: Instantly centers the disassembly view around the executing instruction.</li>
+                    <li><strong>Arbitrary Address Browsing</strong>: Type any hex address in the <code>Addr</code> box (e.g. <code>8000</code> or <code>0000</code>).</li>
+                    <li>
+                      <strong>Interactive Breakpoints</strong>:
+                      Type a hex address into <code>BP Hex</code> and click <code>+BP</code>, or <em>click directly on any address in Listing.txt</em>! When the CPU hits a breakpoint address, execution stops immediately, switches bottom panel to disassembler, and highlights the address in red.
+                    </li>
+                  </ul>
+                  <div class="tut-action-row">
+                    <button class="btn btn-xs btn-tut-action" data-tut-action="open-disasm">Open Disassembler at Current PC</button>
+                    <button class="btn btn-xs btn-tut-action" data-tut-action="disasm-8000">Disassemble User RAM ($8000)</button>
+                  </div>
+                </div>
+
+                <!-- Step 6: Virtualized 512 KB Memory Hex Inspector -->
+                <div class="tut-step">
+                  <div class="tut-step-header">
+                    <span class="tut-step-num">6</span>
+                    <span class="tut-step-title">Using the Memory Hex Inspector</span>
+                  </div>
+                  <p>
+                    Inspect memory across all three hardware address spaces:
+                  </p>
+                  <ul>
+                    <li><strong>Logical CPU (64 KB)</strong>: The CPU's current memory view translated through the Z180 MMU registers (<code>CBAR</code>, <code>BBR</code>, <code>CBR</code>).</li>
+                    <li><strong>Physical ROM (512 KB)</strong>: The SST39SF040 Flash memory containing RomWBW or Small Computer Monitor.</li>
+                    <li><strong>Physical SRAM (512 KB)</strong>: The AS6C4008 512K static RAM chip.</li>
+                  </ul>
+                  <p>
+                    The inspector uses 60 FPS DOM virtualization, allowing smooth scrolling across all 524,288 bytes without lag. Use the quick jump buttons (<code>$0000</code>, <code>$0100</code> for CP/M TPA, <code>$4000</code> for Screen, <code>$8000</code> for User Apps, <code>@PC</code>, <code>@SP</code>, <code>@HL</code>) to navigate instantly.
+                  </p>
+                  <div class="tut-action-row">
+                    <button class="btn btn-xs btn-tut-action" data-tut-action="open-memory-8000">Open Memory Viewer at $8000</button>
+                    <button class="btn btn-xs btn-tut-action" data-tut-action="open-memory-0000">Open Memory Viewer at $0000</button>
+                    <button class="btn btn-xs btn-tut-action" data-tut-action="open-memory-pc">Jump Memory to Current PC</button>
+                  </div>
+                </div>
+
+                <!-- Step 7: Other Possibilities Offered by the Workshop -->
+                <div class="tut-step">
+                  <div class="tut-step-header">
+                    <span class="tut-step-num">7</span>
+                    <span class="tut-step-title">Other Workshop Possibilities &amp; Tools</span>
+                  </div>
+                  <ul>
+                    <li>
+                      <strong>Side-by-Side Split View (<code>&#10697;</code>)</strong>: Work with your Z80 assembly source editor and serial terminal side-by-side with zero floating windows.
+                    </li>
+                    <li>
+                      <strong>Number Base &amp; ASCII Converter</strong>: Open the <em>Convert</em> sidebar (<kbd>Tools</kbd> or <kbd>Edit &rsaquo; Conversions</kbd>) to translate in real-time between Hex, Unsigned Decimal, Signed 16-Bit (-32768..32767), Binary High Byte, Binary Low Byte, and ASCII character.
+                    </li>
+                    <li>
+                      <strong>Simulated CRT Screen &amp; Printer</strong>: In the <em>Sim Screen &amp; Printer</em> tab, view the 64&times;32 character amber CRT ($4000&ndash;$47FF) and dot-matrix Line Printer (Port $03) paper feed.
+                    </li>
+                    <li>
+                      <strong>Hardware Sidebar Enclosure</strong>: Toggle switches and LEDs with real-time feedback, view DS1302 Real-Time Clock registers, adjust the DS1233 supply voltage slider to test brownout reset behavior, and mount/export MicroSD disk images.
+                    </li>
+                    <li>
+                      <strong>⚡ Quick Boot Menu</strong>: Instantly launch CP/M 2.2, ZSDOS, CP/M 3, WordStar 4, Turbo Pascal, BASIC 4.7b, CamelForth, or Fuzix 0.4 Unix OS with a single click.
+                    </li>
+                  </ul>
+                  <div class="tut-action-row">
+                    <button class="btn btn-xs btn-tut-action" data-tut-action="toggle-split">&#10697; Toggle Split View</button>
+                    <button class="btn btn-xs btn-tut-action" data-tut-action="open-convert">&#128290; Open Base Converter</button>
+                    <button class="btn btn-xs btn-tut-action" data-tut-action="open-peripherals">&#128187; View Sim Screen &amp; Printer</button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

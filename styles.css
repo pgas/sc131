@@ -2184,3 +2184,200 @@ select, input[type="text"] {
 .text-ok { color: #4ade80; }
 .text-err { color: #f87171; }
 .text-accent { color: #f59e0b; }
+
+/* ==========================================================================
+   Workshop Interactive Tutorial & Guide Pane Styles
+   ========================================================================== */
+
+.tutorial-card {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #1c2738;
+}
+
+.tutorial-toolbar {
+  background: #0d1422;
+  border-bottom: 1px solid #1e2c40;
+}
+
+.tutorial-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 28px 40px;
+  background: #070b13;
+  color: #cbd5e1;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.tutorial-container {
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+.tutorial-hero {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(56, 189, 248, 0.08) 100%);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 8px;
+  padding: 18px 22px;
+  margin-bottom: 22px;
+}
+
+.tutorial-hero h2 {
+  font-size: 20px;
+  font-weight: 800;
+  color: #fbbf24;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tutorial-hero p {
+  color: #94a3b8;
+  margin-bottom: 14px;
+}
+
+.tutorial-hero-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.tut-step {
+  background: #0b101c;
+  border: 1px solid #1a2538;
+  border-radius: 8px;
+  padding: 18px 20px;
+  margin-bottom: 18px;
+  transition: border-color 0.15s ease;
+}
+
+.tut-step:hover {
+  border-color: #273852;
+}
+
+.tut-step-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.tut-step-num {
+  width: 28px;
+  height: 28px;
+  background: var(--accent);
+  color: #000000;
+  font-weight: 800;
+  font-size: 13px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.tut-step-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.tut-step p {
+  margin-bottom: 10px;
+}
+
+.tut-callout {
+  background: rgba(56, 189, 248, 0.08);
+  border-left: 3px solid #38bdf8;
+  border-radius: 0 4px 4px 0;
+  padding: 8px 14px;
+  margin: 12px 0;
+  color: #e0f2fe;
+  font-size: 12.5px;
+}
+
+.tut-callout.tip {
+  background: rgba(34, 197, 94, 0.08);
+  border-left-color: #22c55e;
+  color: #dcfce7;
+}
+
+.tut-callout.action {
+  background: rgba(245, 158, 11, 0.1);
+  border-left-color: #f59e0b;
+  color: #fef3c7;
+}
+
+.tut-code {
+  background: #05080f;
+  border: 1px solid #182334;
+  border-radius: 5px;
+  padding: 10px 14px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 19px;
+  color: #fde68a;
+  overflow-x: auto;
+  margin: 12px 0;
+}
+
+.tut-action-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid #141d2c;
+}
+
+.btn-tut-action {
+  background: #172437;
+  border: 1px solid #2a3d58;
+  color: #38bdf8;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.btn-tut-action:hover {
+  background: #1e334e;
+  border-color: #38bdf8;
+  color: #ffffff;
+}
+
+.tut-walkthrough-progress {
+  background: #090e18;
+  border: 1px solid #24354c;
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tut-progress-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: #64748b;
+  transition: color 0.15s ease;
+}
+
+.tut-progress-step.done {
+  color: #4ade80;
+}
+.tut-progress-step.active {
+  color: #fbbf24;
+  font-weight: 700;
+}
