@@ -65,6 +65,20 @@ export class SDCard {
     }
   }
 
+  attachImage(data) {
+    if (!data) return;
+    this.loadSparseBundle(data);
+  }
+
+  detachImage() {
+    this.sectors.clear();
+    this.baseImage = null;
+  }
+
+  get image() {
+    return this.baseImage || (this.sectors.size > 0 ? this.exportImage() : null);
+  }
+
   /**
    * Load a sparse sector map ({ lba: Uint8Array(512) } or array of [lba, Uint8Array])
    */

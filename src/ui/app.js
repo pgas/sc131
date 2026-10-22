@@ -1,29 +1,21 @@
 /**
  * SC131 & SC126 Modern Hardware Emulator Application
  *
- * Dedicated cycle-accurate emulator for Stephen C. Cousins':
+ * Dedicated, cycle-accurate hardware emulator for Stephen C. Cousins':
  * - SC131 Z180 Pocket Computer (18.432 MHz, 512K Flash, 512K SRAM, SDHC, Status LED1)
  * - SC126 Z180 RC2014 Motherboard (18.432 MHz, 512K Flash, 512K SRAM, SDHC, DS1302 RTC, 8-LED Bar)
  *
- * Modern Dark Studio UI:
- * - Native desktop titlebar menu & Quick Boot shortcuts
- * - Layout toggle icons (Bottom Panel, Hardware Sidebar)
- * - Full-height Dual Serial Terminal (ASCI0 Console / ASCI1 Aux)
- * - Docked Bottom Debugger Panel (CPU & MMU, Disassembler, Virtualized Memory Hex)
- * - Hardware Sidebar reflecting the active physical machine
+ * Runs RomWBW v3.6.0, CP/M 2.2, CP/M 3, WordStar 4, Turbo Pascal, BASIC, SCM S6, and Fuzix 0.4 Unix OS.
  */
 
 import { SC131 } from '../emulator/sc131.js';
 import { SC126 } from '../emulator/sc126.js';
-import { disassembleRange, disassembleOne } from '../emulator/disasm.js';
 import { SerialTerminal } from './terminal.js';
 
 const hex2 = (v) => (v & 0xFF).toString(16).toUpperCase().padStart(2, '0');
 const hex4 = (v) => (v & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
-const hex5 = (v) => (v & 0xFFFFF).toString(16).toUpperCase().padStart(5, '0');
+const hex6 = (v) => (v >>> 0).toString(16).toUpperCase().padStart(6, '0');
 const bin8 = (v) => (v & 0xFF).toString(2).padStart(8, '0');
-
-const MEM_ROW_HEIGHT = 20;
 
 async function decompressIfGzip(uint8) {
   if (uint8.byteLength >= 2 && uint8[0] === 0x1F && uint8[1] === 0x8B) {
@@ -56,18 +48,8 @@ class SC131App {
     this.machineType = mParam === 'sc126' ? 'sc126' : 'sc131';
     this.firmwareType = 'romwbw';
 
-    // Layout State
+    // Layout
     this.hardwareSidebarVisible = true;
-    this.debuggerVisible = true;
-    this.debuggerLive = false;
-    this.activeBottomTab = 'all';
-
-    // Debugger State
-    this.disasmBaseAddr = null;
-    this.breakpoints = new Set();
-    this.memSpace = 'logical';
-    this.memBaseAddr = 0;
-    this.syncingMemInput = false;
     this.syncingTermScroll = false;
 
     // Macro queue for prompt-driven boots
@@ -133,6 +115,7 @@ class SC131App {
     this.fpsCounter = 0;
     this.fpsLastTime = performance.now();
     this.lastCycles = 0;
+    this.totalExecutedCycles = 0;
     this.measuredMhz = 18.43;
 
     this.setupUI();
@@ -148,20 +131,19 @@ class SC131App {
     if (machine !== this.machineType) return;
 
     if (ch === 0) {
-      this.term0.write(byte);
+      this.term0.writeByte(byte);
       this.triggerSerialDot(0);
 
-      // Macro queue watch buffer
       if (this.macroQueue.length > 0) {
-        const char = String.fromCharCode(byte);
+        const char = String.fromCharCode(byte & 0x7F);
         this.serialWatchBuffer += char;
-        if (this.serialWatchBuffer.length > 256) {
-          this.serialWatchBuffer = this.serialWatchBuffer.slice(-128);
+        if (this.serialWatchBuffer.length > 512) {
+          this.serialWatchBuffer = this.serialWatchBuffer.slice(-256);
         }
         this.checkMacroQueue();
       }
     } else if (ch === 1) {
-      this.term1.write(byte);
+      this.term1.writeByte(byte);
       this.triggerSerialDot(1);
     }
   }
@@ -188,31 +170,33 @@ class SC131App {
     const rwEl = document.getElementById('sd-rw-count');
     if (opEl) opEl.textContent = op;
     if (lbaEl) lbaEl.textContent = '0x' + hex6(lba);
-    if (rwEl) rwEl.textContent = `${this.board.sdCard.readCount} / ${this.board.sdCard.writeCount}`;
+    if (rwEl && this.board.sdcard) {
+      rwEl.textContent = `${this.board.sdcard.readCount} / ${this.board.sdcard.writeCount}`;
+    }
   }
 
   updateLedsUI(leds) {
     if (this.machineType === 'sc131') {
       const led1 = document.getElementById('led-status');
-      if (led1 && typeof leds.statusLed !== 'undefined') {
-        led1.classList.toggle('on', leds.statusLed);
+      if (led1 && typeof leds.status !== 'undefined') {
+        led1.classList.toggle('on', leds.status);
       }
       const pwr = document.getElementById('led-power');
-      if (pwr && typeof leds.powerLed !== 'undefined') {
-        pwr.classList.toggle('on', leds.powerLed);
+      if (pwr && typeof leds.power !== 'undefined') {
+        pwr.classList.toggle('on', leds.power);
       }
       const rst = document.getElementById('led-reset');
-      if (rst && typeof leds.resetLed !== 'undefined') {
-        rst.classList.toggle('on', leds.resetLed);
+      if (rst && typeof leds.reset !== 'undefined') {
+        rst.classList.toggle('on', leds.reset);
       }
     } else if (this.machineType === 'sc126') {
       const pwr = document.getElementById('sc126-led-power');
-      if (pwr && typeof leds.powerLed !== 'undefined') {
-        pwr.classList.toggle('on', leds.powerLed);
+      if (pwr && typeof leds.power !== 'undefined') {
+        pwr.classList.toggle('on', leds.power);
       }
       const rst = document.getElementById('sc126-led-reset');
-      if (rst && typeof leds.resetLed !== 'undefined') {
-        rst.classList.toggle('on', leds.resetLed);
+      if (rst && typeof leds.reset !== 'undefined') {
+        rst.classList.toggle('on', leds.reset);
       }
       if (typeof leds.diagByte !== 'undefined') {
         this.updateSc126DiagBarUI(leds.diagByte);
@@ -250,19 +234,30 @@ class SC131App {
   syncMachineChrome() {
     const isSc131 = this.machineType === 'sc131';
 
-    // Titlebar breadcrumb
-    const crumbMachine = document.getElementById('crumb-machine-name');
-    if (crumbMachine) {
-      crumbMachine.textContent = isSc131 ? 'SC131 Pocket Computer' : 'SC126 RC2014 Motherboard';
+    // Badge & Title
+    const badge = document.getElementById('brand-badge');
+    if (badge) badge.textContent = isSc131 ? '⚡ SC131' : '⚡ SC126';
+
+    const title = document.getElementById('brand-title');
+    if (title) title.textContent = isSc131 ? 'SC131 Z180 Pocket Computer' : 'SC126 Z180 RC2014 Motherboard';
+
+    const subtitle = document.getElementById('brand-subtitle-text');
+    if (subtitle) {
+      subtitle.textContent = isSc131
+        ? 'Zilog Z8S180-N @ 18.432 MHz • 512 KB Flash • 512 KB SRAM • SPI SDHC'
+        : 'Zilog Z8S180-N @ 18.432 MHz • 512 KB Flash • 512 KB SRAM • DS1302 RTC • Port 0x0D 8-LED Bar';
     }
-    const crumbFw = document.getElementById('crumb-firmware-name');
-    if (crumbFw) {
-      const fwNames = {
-        romwbw: 'RomWBW v3.6.0',
-        fuzix: 'Fuzix Unix 0.4',
-        scm_s6: 'Small Computer Monitor S6',
-      };
-      crumbFw.textContent = fwNames[this.firmwareType] || 'RomWBW';
+
+    const docLink = document.getElementById('brand-doc-link');
+    if (docLink) {
+      docLink.href = isSc131
+        ? 'https://smallcomputercentral.com/sc131-z180-pocket-computer/'
+        : 'https://smallcomputercentral.com/rcbus/sc100-series/sc126-z180-motherboard-rc2014/';
+    }
+
+    const btnReset = document.getElementById('btn-reset');
+    if (btnReset) {
+      btnReset.textContent = isSc131 ? 'Reset (SW1)' : 'Reset (SW2)';
     }
 
     // Select dropdowns
@@ -274,19 +269,6 @@ class SC131App {
     if (fwSelect && fwSelect.value !== this.firmwareType) {
       fwSelect.value = this.firmwareType;
     }
-
-    // Menu checkmarks
-    const chk131 = document.getElementById('menu-chk-sc131');
-    const chk126 = document.getElementById('menu-chk-sc126');
-    if (chk131) chk131.innerHTML = isSc131 ? '&#9679; ' : '&#9675; ';
-    if (chk126) chk126.innerHTML = !isSc131 ? '&#9679; ' : '&#9675; ';
-
-    const chkFwRom = document.getElementById('menu-chk-fw-romwbw');
-    const chkFwFuz = document.getElementById('menu-chk-fw-fuzix');
-    const chkFwScm = document.getElementById('menu-chk-fw-scm');
-    if (chkFwRom) chkFwRom.innerHTML = this.firmwareType === 'romwbw' ? '&#9679; ' : '&#9675; ';
-    if (chkFwFuz) chkFwFuz.innerHTML = this.firmwareType === 'fuzix' ? '&#9679; ' : '&#9675; ';
-    if (chkFwScm) chkFwScm.innerHTML = this.firmwareType === 'scm_s6' ? '&#9679; ' : '&#9675; ';
 
     // Hardware Sidebar Panels
     const sc131Front = document.getElementById('hw-front-sc131');
@@ -318,7 +300,7 @@ class SC131App {
       sbMachine.textContent = isSc131 ? '⎇ SC131 (Z8S180)' : '⎇ SC126 (Z8S180)';
     }
 
-    // Update SD Card Slot title
+    // SD Card Slot title
     const sdTitle = document.getElementById('sd-port-title');
     if (sdTitle) {
       sdTitle.textContent = isSc131
@@ -327,9 +309,9 @@ class SC131App {
     }
 
     this.updateLedsUI({
-      statusLed: this.board.statusLed,
-      powerLed: this.board.powerLed,
-      resetLed: this.board.resetLed,
+      status: this.board.statusLed,
+      power: this.board.powerLed,
+      reset: this.board.resetLed,
       diagByte: this.board.diagLedsByte || 0,
     });
   }
@@ -364,7 +346,7 @@ class SC131App {
       await this.loadRomFile(romKey);
     }
     if (this.romCache[romKey]) {
-      this.board.flashRom.set(this.romCache[romKey]);
+      this.board.loadRom(this.romCache[romKey]);
     }
 
     if (fw === 'fuzix') {
@@ -408,8 +390,8 @@ class SC131App {
         console.warn('Could not load sc131_sdcard.simg:', err);
       }
     }
-    if (this.sdBundleCache) {
-      this.board.sdCard.attachImage(this.sdBundleCache);
+    if (this.sdBundleCache && this.board.sdcard) {
+      this.board.sdcard.attachImage(this.sdBundleCache);
       const statEl = document.getElementById('sd-status-text');
       if (statEl) statEl.textContent = 'SD0: 68 MB SDHC (8 Slices)';
       const sbSd = document.getElementById('sb-sd');
@@ -430,8 +412,8 @@ class SC131App {
         console.warn('Could not load fuzix_sdcard.simg:', err);
       }
     }
-    if (this.fuzixSdBundleCache) {
-      this.board.sdCard.attachImage(this.fuzixSdBundleCache);
+    if (this.fuzixSdBundleCache && this.board.sdcard) {
+      this.board.sdcard.attachImage(this.fuzixSdBundleCache);
       const statEl = document.getElementById('sd-status-text');
       if (statEl) statEl.textContent = 'SD0: Fuzix 0.4 Unix (32MB)';
       const sbSd = document.getElementById('sb-sd');
@@ -451,8 +433,6 @@ class SC131App {
       clearTimeout(this.resetPulseTimer);
       this.resetPulseTimer = setTimeout(() => led.classList.remove('on'), 250);
     }
-
-    this.updateDebuggerViews();
   }
 
   queueMacro(promptPattern, responseString) {
@@ -514,23 +494,10 @@ class SC131App {
   }
 
   setupUI() {
-    // Native Menu Bar setup
-    this.setupMenubar();
-
-    // Layout Toggle Buttons
-    const btnToggleDebugger = document.getElementById('btn-toggle-debugger');
-    if (btnToggleDebugger) {
-      btnToggleDebugger.addEventListener('click', () => this.toggleDebuggerPanel());
-    }
-
+    // Layout Toggle Button
     const btnToggleHardware = document.getElementById('btn-toggle-hardware');
     if (btnToggleHardware) {
       btnToggleHardware.addEventListener('click', () => this.toggleHardwareSidebar());
-    }
-
-    const btnHideDebugger = document.getElementById('btn-hide-debugger');
-    if (btnHideDebugger) {
-      btnHideDebugger.addEventListener('click', () => this.toggleDebuggerPanel(false));
     }
 
     // Machine & Firmware selectors
@@ -542,6 +509,17 @@ class SC131App {
     const fwSelect = document.getElementById('firmware-select');
     if (fwSelect) {
       fwSelect.addEventListener('change', (e) => this.setFirmware(e.target.value));
+    }
+
+    const speedSelect = document.getElementById('speed-select');
+    if (speedSelect) {
+      speedSelect.addEventListener('change', (e) => {
+        this.speedMultiplier = parseFloat(e.target.value) || 1.0;
+        const pill = document.getElementById('status-pill');
+        if (pill && this.running) {
+          pill.textContent = `RUNNING @ ${(18.432 * this.speedMultiplier).toFixed(2)} MHz`;
+        }
+      });
     }
 
     // Execution Buttons
@@ -563,53 +541,25 @@ class SC131App {
       btnReset.addEventListener('click', () => this.resetHardwareTactile());
     }
 
-    // Terminal Quick Boot Dropdown
-    const btnQuickBoot = document.getElementById('btn-quick-boot-term');
-    const termQuickMenu = document.getElementById('term-quickboot-menu');
-    if (btnQuickBoot && termQuickMenu) {
-      btnQuickBoot.addEventListener('click', (e) => {
-        e.stopPropagation();
-        termQuickMenu.classList.toggle('hidden');
-      });
-      document.addEventListener('click', (e) => {
-        if (!termQuickMenu.contains(e.target) && e.target !== btnQuickBoot) {
-          termQuickMenu.classList.add('hidden');
-        }
-      });
-    }
-
-    // Quick Boot Macro Buttons (all items with data-macro)
+    // Quick Launch Bar Buttons (all items with data-macro)
     document.querySelectorAll('[data-macro]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const macro = btn.getAttribute('data-macro');
         if (macro) {
           this.quickBootMacro(macro);
-          this.closeAllMenus();
         }
       });
     });
 
-    const fuzixBtns = [
-      document.getElementById('btn-fuzix-launch'),
-      document.getElementById('menu-launch-fuzix'),
-    ];
-    fuzixBtns.forEach((btn) => {
-      if (btn) btn.addEventListener('click', () => {
-        this.launchFuzixQuick();
-        this.closeAllMenus();
-      });
-    });
+    const fuzixBtn = document.getElementById('btn-fuzix-launch');
+    if (fuzixBtn) {
+      fuzixBtn.addEventListener('click', () => this.launchFuzixQuick());
+    }
 
-    const ledBtns = [
-      document.getElementById('btn-led-demo'),
-      document.getElementById('menu-launch-led-demo'),
-    ];
-    ledBtns.forEach((btn) => {
-      if (btn) btn.addEventListener('click', () => {
-        this.launchLedDemoQuick();
-        this.closeAllMenus();
-      });
-    });
+    const ledBtn = document.getElementById('btn-led-demo');
+    if (ledBtn) {
+      ledBtn.addEventListener('click', () => this.launchLedDemoQuick());
+    }
 
     // Terminal Tabs (ASCI0 vs ASCI1)
     const tabA = document.getElementById('tab-asci0');
@@ -642,8 +592,8 @@ class SC131App {
     const sizeSel = document.getElementById('term-size-select');
     if (sizeSel) {
       sizeSel.addEventListener('change', (e) => {
-        this.term0.setSize(e.target.value);
-        this.term1.setSize(e.target.value);
+        this.term0.setSizePreset(e.target.value);
+        this.term1.setSizePreset(e.target.value);
         this.syncTerminalScrollbar();
       });
     }
@@ -659,8 +609,8 @@ class SC131App {
     const wsChk = document.getElementById('chk-wordstar');
     if (wsChk) {
       wsChk.addEventListener('change', (e) => {
-        this.term0.wordStarArrowKeys = e.target.checked;
-        this.term1.wordStarArrowKeys = e.target.checked;
+        this.term0.wordstarArrows = e.target.checked;
+        this.term1.wordstarArrows = e.target.checked;
       });
     }
 
@@ -736,12 +686,12 @@ class SC131App {
     if (sc126Bar) {
       sc126Bar.addEventListener('click', (e) => {
         const cell = e.target.closest('.diag-led-cell');
-        if (cell && this.board.writeIo) {
+        if (cell && this.board.writeExtIO) {
           const bit = parseInt(cell.getAttribute('data-bit'), 10);
           if (!isNaN(bit)) {
-            const cur = this.board.diagLedsByte || 0;
+            const cur = this.board.diagLeds || 0;
             const updated = cur ^ (1 << bit);
-            this.board.writeIo(0x0D, updated);
+            this.board.writeExtIO(0x0D, updated);
             this.updateSc126DiagBarUI(updated);
           }
         }
@@ -767,22 +717,17 @@ class SC131App {
     if (sdInput) {
       sdInput.addEventListener('change', (e) => this.handleCustomSdMount(e));
     }
-    const menuSdInput = document.getElementById('menu-file-sd');
-    if (menuSdInput) {
-      menuSdInput.addEventListener('change', (e) => this.handleCustomSdMount(e));
-    }
 
     const btnSdExport = document.getElementById('btn-sd-export');
-    const menuSdExport = document.getElementById('menu-file-export-sd');
-    [btnSdExport, menuSdExport].forEach((btn) => {
-      if (btn) btn.addEventListener('click', () => this.exportSdImage());
-    });
+    if (btnSdExport) {
+      btnSdExport.addEventListener('click', () => this.exportSdImage());
+    }
 
     const btnSdEject = document.getElementById('btn-sd-eject');
     if (btnSdEject) {
       btnSdEject.addEventListener('click', () => {
-        if (this.board.sdCard.image) {
-          this.board.sdCard.detachImage();
+        if (this.board.sdcard && this.board.sdcard.image) {
+          this.board.sdcard.detachImage();
           btnSdEject.textContent = 'Insert SD';
           const stat = document.getElementById('sd-status-text');
           if (stat) stat.textContent = 'SD0: [Ejected / No Card]';
@@ -797,7 +742,6 @@ class SC131App {
     const romInputs = [
       document.getElementById('rom-file-input'),
       document.getElementById('rom-file-input-sc126'),
-      document.getElementById('menu-file-rom'),
     ];
     romInputs.forEach((inp) => {
       if (inp) inp.addEventListener('change', (e) => this.handleCustomRomUpload(e));
@@ -825,16 +769,6 @@ class SC131App {
         this.switchMachine(this.machineType === 'sc131' ? 'sc126' : 'sc131');
       });
     }
-    const sbPc = document.getElementById('sb-pc');
-    if (sbPc) {
-      sbPc.addEventListener('click', () => {
-        this.toggleDebuggerPanel(true);
-        this.disasmAt(this.board.cpu.pc);
-      });
-    }
-
-    // Bottom Debugger Panel Setup
-    this.setupDebuggerUI();
 
     // Global Keyboard Shortcuts
     window.addEventListener('keydown', (e) => {
@@ -843,9 +777,6 @@ class SC131App {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault();
         this.toggleHardwareSidebar();
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'j') {
-        e.preventDefault();
-        this.toggleDebuggerPanel();
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'r') {
         e.preventDefault();
         this.resetHardwareTactile();
@@ -860,150 +791,6 @@ class SC131App {
     });
   }
 
-  setupMenubar() {
-    const menubar = document.querySelector('.vscode-menubar');
-    if (!menubar) return;
-
-    menubar.querySelectorAll('.menubar-item').forEach((item) => {
-      const btn = item.querySelector('.menubar-btn');
-      if (!btn) return;
-
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const isOpen = item.classList.contains('open');
-        this.closeAllMenus();
-        if (!isOpen) item.classList.add('open');
-      });
-
-      item.addEventListener('mouseenter', () => {
-        const anyOpen = menubar.querySelector('.menubar-item.open');
-        if (anyOpen && anyOpen !== item) {
-          anyOpen.classList.remove('open');
-          item.classList.add('open');
-        }
-      });
-    });
-
-    document.addEventListener('click', (e) => {
-      if (!menubar.contains(e.target)) {
-        this.closeAllMenus();
-      }
-    });
-
-    // Menubar machine selector items
-    document.querySelectorAll('[data-machine-pick]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const m = btn.getAttribute('data-machine-pick');
-        this.switchMachine(m);
-        this.closeAllMenus();
-      });
-    });
-
-    // Menubar firmware selector items
-    document.querySelectorAll('[data-fw-pick]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const fw = btn.getAttribute('data-fw-pick');
-        this.setFirmware(fw);
-        this.closeAllMenus();
-      });
-    });
-
-    // Speed pickers
-    document.querySelectorAll('[data-speed-pick]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        this.speedMultiplier = parseFloat(btn.getAttribute('data-speed-pick')) || 1.0;
-        this.closeAllMenus();
-      });
-    });
-
-    // View menu items
-    const menuPanel = document.getElementById('menu-view-panel');
-    if (menuPanel) menuPanel.addEventListener('click', () => {
-      this.toggleDebuggerPanel();
-      this.closeAllMenus();
-    });
-
-    const menuHw = document.getElementById('menu-view-hardware');
-    if (menuHw) menuHw.addEventListener('click', () => {
-      this.toggleHardwareSidebar();
-      this.closeAllMenus();
-    });
-
-    const menuThAmber = document.getElementById('menu-view-theme-amber');
-    if (menuThAmber) menuThAmber.addEventListener('click', () => {
-      this.term0.setTheme('amber');
-      this.term1.setTheme('amber');
-      const sel = document.getElementById('theme-select');
-      if (sel) sel.value = 'amber';
-      this.closeAllMenus();
-    });
-
-    const menuThGreen = document.getElementById('menu-view-theme-green');
-    if (menuThGreen) menuThGreen.addEventListener('click', () => {
-      this.term0.setTheme('green');
-      this.term1.setTheme('green');
-      const sel = document.getElementById('theme-select');
-      if (sel) sel.value = 'green';
-      this.closeAllMenus();
-    });
-
-    const menuThModern = document.getElementById('menu-view-theme-modern');
-    if (menuThModern) menuThModern.addEventListener('click', () => {
-      this.term0.setTheme('modern');
-      this.term1.setTheme('modern');
-      const sel = document.getElementById('theme-select');
-      if (sel) sel.value = 'modern';
-      this.closeAllMenus();
-    });
-
-    const menuRunPause = document.getElementById('menu-run-pause');
-    if (menuRunPause) menuRunPause.addEventListener('click', () => {
-      if (this.running) this.pause();
-      else this.resume();
-      this.closeAllMenus();
-    });
-
-    const menuStep = document.getElementById('menu-run-step');
-    if (menuStep) menuStep.addEventListener('click', () => {
-      this.stepInstruction();
-      this.closeAllMenus();
-    });
-
-    const menuReset = document.getElementById('menu-run-reset');
-    if (menuReset) menuReset.addEventListener('click', () => {
-      this.resetHardwareTactile();
-      this.closeAllMenus();
-    });
-
-    const menuAbout = document.getElementById('menu-help-about');
-    if (menuAbout) menuAbout.addEventListener('click', () => {
-      alert('SC131 & SC126 Z180 Hardware Emulator v1.0\n\nCycle-accurate emulator for Stephen C. Cousins\' SC131 Pocket Computer and SC126 RCBus Motherboard.\n\nRunning RomWBW v3.6.0, CP/M 2.2, CP/M 3, WordStar 4, Small Computer Monitor S6, and Fuzix 0.4 Unix OS.');
-      this.closeAllMenus();
-    });
-  }
-
-  closeAllMenus() {
-    document.querySelectorAll('.menubar-item.open').forEach((item) => {
-      item.classList.remove('open');
-    });
-    const termMenu = document.getElementById('term-quickboot-menu');
-    if (termMenu) termMenu.classList.add('hidden');
-  }
-
-  toggleDebuggerPanel(forceState) {
-    const panel = document.getElementById('debugger-section');
-    const btn = document.getElementById('btn-toggle-debugger');
-    if (!panel) return;
-
-    this.debuggerVisible = typeof forceState === 'boolean' ? forceState : !this.debuggerVisible;
-    panel.classList.toggle('hidden', !this.debuggerVisible);
-    if (btn) btn.classList.toggle('active', this.debuggerVisible);
-
-    if (this.debuggerVisible) {
-      this.updateDebuggerViews();
-    }
-  }
-
   toggleHardwareSidebar(forceState) {
     const side = document.getElementById('side-column');
     const btn = document.getElementById('btn-toggle-hardware');
@@ -1012,376 +799,6 @@ class SC131App {
     this.hardwareSidebarVisible = typeof forceState === 'boolean' ? forceState : !this.hardwareSidebarVisible;
     side.classList.toggle('hidden', !this.hardwareSidebarVisible);
     if (btn) btn.classList.toggle('active', this.hardwareSidebarVisible);
-  }
-
-  setupDebuggerUI() {
-    // Bottom Panel Tabs
-    const tabs = document.querySelectorAll('.bottom-tab');
-    tabs.forEach((tab) => {
-      tab.addEventListener('click', () => {
-        tabs.forEach((t) => t.classList.remove('active'));
-        tab.classList.add('active');
-        this.activeBottomTab = tab.getAttribute('data-bottom-tab');
-        this.syncBottomTabsView();
-      });
-    });
-
-    const liveChk = document.getElementById('chk-debugger-live');
-    if (liveChk) {
-      liveChk.addEventListener('change', (e) => {
-        this.debuggerLive = e.target.checked;
-      });
-    }
-
-    const refreshBtn = document.getElementById('btn-debugger-refresh');
-    if (refreshBtn) {
-      refreshBtn.addEventListener('click', () => this.updateDebuggerViews());
-    }
-
-    // Disassembler Controls
-    const disasmPcBtn = document.getElementById('btn-disasm-pc');
-    if (disasmPcBtn) {
-      disasmPcBtn.addEventListener('click', () => {
-        this.disasmBaseAddr = null;
-        this.updateDisassembly();
-      });
-    }
-
-    const disasmAddrInp = document.getElementById('disasm-addr-input');
-    if (disasmAddrInp) {
-      disasmAddrInp.addEventListener('change', (e) => {
-        const addr = parseInt(e.target.value, 16);
-        if (!isNaN(addr)) {
-          this.disasmBaseAddr = addr & 0xFFFF;
-          this.updateDisassembly();
-        }
-      });
-    }
-
-    const bpInp = document.getElementById('bp-input');
-    const addBpBtn = document.getElementById('btn-add-bp');
-    const clearBpBtn = document.getElementById('btn-clear-bp');
-
-    if (addBpBtn && bpInp) {
-      addBpBtn.addEventListener('click', () => {
-        const addr = parseInt(bpInp.value, 16);
-        if (!isNaN(addr)) {
-          this.breakpoints.add(addr & 0xFFFF);
-          bpInp.value = '';
-          this.updateDisassembly();
-        }
-      });
-    }
-
-    if (clearBpBtn) {
-      clearBpBtn.addEventListener('click', () => {
-        this.breakpoints.clear();
-        this.updateDisassembly();
-      });
-    }
-
-    // Memory Hex Inspector Controls
-    const memSpaceSelect = document.getElementById('mem-space-select');
-    if (memSpaceSelect) {
-      memSpaceSelect.addEventListener('change', (e) => {
-        this.memSpace = e.target.value;
-        this.updateMemoryRangeLabel();
-        this.updateMemoryHex();
-      });
-    }
-
-    const memAddrInp = document.getElementById('mem-addr-input');
-    if (memAddrInp) {
-      memAddrInp.addEventListener('change', (e) => {
-        const addr = parseInt(e.target.value, 16);
-        if (!isNaN(addr)) {
-          this.scrollMemoryTo(addr);
-        }
-      });
-    }
-
-    document.querySelectorAll('[data-mem-jump]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const addr = parseInt(btn.getAttribute('data-mem-jump'), 16);
-        if (!isNaN(addr)) this.scrollMemoryTo(addr);
-      });
-    });
-
-    document.querySelectorAll('[data-mem-reg]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const reg = btn.getAttribute('data-mem-reg');
-        let addr = 0;
-        if (reg === 'pc') addr = this.board.cpu.pc;
-        else if (reg === 'sp') addr = this.board.cpu.sp;
-        else if (reg === 'hl') addr = this.board.cpu.hl;
-        this.scrollMemoryTo(addr);
-      });
-    });
-
-    const memScroll = document.getElementById('mem-scroll-container');
-    if (memScroll) {
-      memScroll.addEventListener('scroll', () => {
-        this.handleMemoryScroll();
-      });
-    }
-  }
-
-  syncBottomTabsView() {
-    const cardCpu = document.getElementById('card-cpu');
-    const cardDisasm = document.getElementById('card-disasm');
-    const cardMem = document.getElementById('card-memory');
-    const topGrid = document.getElementById('debugger-top-grid');
-
-    if (this.activeBottomTab === 'all') {
-      if (topGrid) topGrid.classList.remove('hidden');
-      if (cardCpu) cardCpu.classList.remove('hidden');
-      if (cardDisasm) cardDisasm.classList.remove('hidden');
-      if (cardMem) cardMem.classList.remove('hidden');
-    } else if (this.activeBottomTab === 'cpu') {
-      if (topGrid) topGrid.classList.remove('hidden');
-      if (cardCpu) cardCpu.classList.remove('hidden');
-      if (cardDisasm) cardDisasm.classList.add('hidden');
-      if (cardMem) cardMem.classList.add('hidden');
-    } else if (this.activeBottomTab === 'disasm') {
-      if (topGrid) topGrid.classList.remove('hidden');
-      if (cardCpu) cardCpu.classList.add('hidden');
-      if (cardDisasm) cardDisasm.classList.remove('hidden');
-      if (cardMem) cardMem.classList.add('hidden');
-    } else if (this.activeBottomTab === 'memory') {
-      if (topGrid) topGrid.classList.add('hidden');
-      if (cardMem) cardMem.classList.remove('hidden');
-    }
-  }
-
-  updateDebuggerViews() {
-    if (!this.debuggerVisible) return;
-    this.updateCpuRegistersUI();
-    this.updateDisassembly();
-    this.updateMemoryHex();
-  }
-
-  updateCpuRegistersUI() {
-    const cpu = this.board.cpu;
-    if (!cpu) return;
-
-    const setReg = (id, val) => {
-      const el = document.getElementById(id);
-      if (el) el.textContent = hex4(val);
-    };
-
-    setReg('reg-pc', cpu.pc);
-    setReg('reg-sp', cpu.sp);
-    setReg('reg-af', (cpu.a << 8) | cpu.f);
-    setReg('reg-bc', cpu.bc);
-    setReg('reg-de', cpu.de);
-    setReg('reg-hl', cpu.hl);
-    setReg('reg-ix', cpu.ix);
-    setReg('reg-iy', cpu.iy);
-    setReg('reg-af2', (cpu.a2 << 8) | cpu.f2);
-    setReg('reg-bc2', cpu.bc2);
-    setReg('reg-de2', cpu.de2);
-    setReg('reg-hl2', cpu.hl2);
-
-    const irEl = document.getElementById('reg-ir');
-    if (irEl) irEl.textContent = `${hex2(cpu.i)} / ${hex2(cpu.r)}`;
-
-    const flagsEl = document.getElementById('reg-flags');
-    if (flagsEl) {
-      const f = cpu.f;
-      const s = (f & 0x80) ? 'S' : '.';
-      const z = (f & 0x40) ? 'Z' : '.';
-      const h = (f & 0x10) ? 'H' : '.';
-      const pv = (f & 0x04) ? 'P' : '.';
-      const n = (f & 0x02) ? 'N' : '.';
-      const c = (f & 0x01) ? 'C' : '.';
-      flagsEl.textContent = `${s}${z}.${h}.${pv}${n}${c}`;
-    }
-
-    const modeBadge = document.getElementById('cpu-mode-badge');
-    if (modeBadge) {
-      const im = cpu.im;
-      const iff = cpu.iff1 ? 'EI' : 'DI';
-      modeBadge.textContent = `IM ${im} • ${iff}`;
-    }
-
-    // MMU Translation Table
-    const mmu = cpu.mmu;
-    if (mmu) {
-      const rawEl = document.getElementById('mmu-regs-raw');
-      if (rawEl) {
-        rawEl.textContent = `CBAR=${hex2(mmu.cbar)} BBR=${hex2(mmu.bbr)} CBR=${hex2(mmu.cbr)}`;
-      }
-
-      const barsEl = document.getElementById('mmu-bars');
-      if (barsEl) {
-        const ca0End = mmu.ba;
-        const bankEnd = mmu.ca;
-
-        const ca0Phys = mmu.cbr << 12;
-        const bankPhys = (mmu.bbr << 12) + (ca0End << 12);
-        const ca1Phys = (mmu.cbr << 12) + (bankEnd << 12);
-
-        barsEl.innerHTML = `
-          <div class="mmu-row">
-            <span>Common 1: $${hex4(bankEnd << 12)}&ndash;$FFFF</span>
-            <span>&rarr; Phys $${hex5(ca1Phys)} &bull; ${ca1Phys >= 0x80000 ? 'SRAM' : 'ROM'}</span>
-          </div>
-          <div class="mmu-row">
-            <span>Bank Area: $${hex4(ca0End << 12)}&ndash;$${hex4((bankEnd << 12) - 1)}</span>
-            <span>&rarr; Phys $${hex5(bankPhys)} &bull; ${bankPhys >= 0x80000 ? 'SRAM' : 'ROM'}</span>
-          </div>
-          <div class="mmu-row">
-            <span>Common 0: $0000&ndash;$${hex4((ca0End << 12) - 1)}</span>
-            <span>&rarr; Phys $${hex5(ca0Phys)} &bull; ${ca0Phys >= 0x80000 ? 'SRAM' : 'ROM'}</span>
-          </div>
-        `;
-      }
-    }
-  }
-
-  updateDisassembly() {
-    const listEl = document.getElementById('disasm-view');
-    if (!listEl) return;
-
-    const pc = this.board.cpu.pc;
-    const base = this.disasmBaseAddr !== null ? this.disasmBaseAddr : Math.max(0, pc - 4);
-
-    const readByte = (addr) => this.board.readMem(addr & 0xFFFF);
-    const instructions = disassembleRange(readByte, base, 16);
-
-    let html = '';
-    for (const inst of instructions) {
-      const isPc = inst.address === pc;
-      const isBp = this.breakpoints.has(inst.address);
-      const rowClass = `disasm-row ${isPc ? 'pc-active' : ''} ${isBp ? 'bp-hit' : ''}`;
-      const bytesStr = inst.bytes.map(hex2).join(' ').padEnd(12, ' ');
-
-      html += `
-        <div class="${rowClass}" data-addr="${hex4(inst.address)}">
-          <span class="disasm-bp-dot ${isBp ? 'active' : ''}"></span>
-          <span class="disasm-addr">$${hex4(inst.address)}</span>
-          <span class="disasm-bytes">${bytesStr}</span>
-          <span class="disasm-mnemonic">${inst.mnemonic} ${inst.operands}</span>
-        </div>
-      `;
-    }
-    listEl.innerHTML = html;
-
-    // Click on row toggles breakpoint
-    listEl.querySelectorAll('.disasm-row').forEach((row) => {
-      row.addEventListener('click', () => {
-        const addr = parseInt(row.getAttribute('data-addr'), 16);
-        if (this.breakpoints.has(addr)) this.breakpoints.delete(addr);
-        else this.breakpoints.add(addr);
-        this.updateDisassembly();
-      });
-    });
-  }
-
-  disasmAt(addr) {
-    this.disasmBaseAddr = addr & 0xFFFF;
-    this.updateDisassembly();
-  }
-
-  updateMemoryRangeLabel() {
-    const lbl = document.getElementById('mem-range-label');
-    if (!lbl) return;
-    if (this.memSpace === 'logical') {
-      lbl.textContent = '$0000 – $FFFF (64 KB Logical CPU)';
-    } else if (this.memSpace === 'rom') {
-      lbl.textContent = '$00000 – $7FFFF (512 KB Physical Flash ROM)';
-    } else if (this.memSpace === 'ram') {
-      lbl.textContent = '$80000 – $FFFFF (512 KB Physical SRAM)';
-    }
-  }
-
-  getTotalMemoryBytes() {
-    return this.memSpace === 'logical' ? 0x10000 : 0x80000;
-  }
-
-  scrollMemoryTo(addr) {
-    const max = this.getTotalMemoryBytes();
-    const clamped = Math.max(0, Math.min(addr, max - 16));
-    const rowIndex = Math.floor(clamped / 16);
-    const container = document.getElementById('mem-scroll-container');
-    if (container) {
-      container.scrollTop = rowIndex * MEM_ROW_HEIGHT;
-    }
-    const inp = document.getElementById('mem-addr-input');
-    if (inp) inp.value = hex4(clamped);
-  }
-
-  handleMemoryScroll() {
-    const container = document.getElementById('mem-scroll-container');
-    if (!container) return;
-    const top = container.scrollTop;
-    const rowIndex = Math.floor(top / MEM_ROW_HEIGHT);
-    const addr = rowIndex * 16;
-    this.memBaseAddr = addr;
-
-    const inp = document.getElementById('mem-addr-input');
-    if (inp && !this.syncingMemInput) {
-      inp.value = hex4(addr);
-    }
-    this.renderMemoryRows();
-  }
-
-  updateMemoryHex() {
-    const spacer = document.getElementById('mem-scroll-spacer');
-    if (spacer) {
-      const totalRows = this.getTotalMemoryBytes() / 16;
-      spacer.style.height = `${totalRows * MEM_ROW_HEIGHT}px`;
-    }
-    this.renderMemoryRows();
-  }
-
-  renderMemoryRows() {
-    const viewport = document.getElementById('mem-hex-view');
-    const container = document.getElementById('mem-scroll-container');
-    if (!viewport || !container) return;
-
-    const top = container.scrollTop;
-    const height = container.clientHeight || 200;
-    const startRow = Math.max(0, Math.floor(top / MEM_ROW_HEIGHT) - 1);
-    const visibleRowCount = Math.ceil(height / MEM_ROW_HEIGHT) + 3;
-
-    viewport.style.transform = `translateY(${startRow * MEM_ROW_HEIGHT}px)`;
-
-    const totalBytes = this.getTotalMemoryBytes();
-    let html = '';
-
-    for (let r = 0; r < visibleRowCount; r++) {
-      const addr = (startRow + r) * 16;
-      if (addr >= totalBytes) break;
-
-      let hexBytes = '';
-      let ascii = '';
-
-      for (let c = 0; c < 16; c++) {
-        const byteAddr = addr + c;
-        let val = 0;
-        if (this.memSpace === 'logical') {
-          val = this.board.readMem(byteAddr);
-        } else if (this.memSpace === 'rom') {
-          val = this.board.flashRom[byteAddr] || 0;
-        } else if (this.memSpace === 'ram') {
-          val = this.board.sram[byteAddr] || 0;
-        }
-
-        hexBytes += hex2(val) + (c === 7 ? '  ' : ' ');
-        ascii += (val >= 32 && val <= 126) ? String.fromCharCode(val) : '.';
-      }
-
-      const addrLabel = this.memSpace === 'logical' ? hex4(addr) : hex5(addr);
-      html += `
-        <div class="hex-row">
-          <span class="hex-row-addr">${addrLabel}</span>
-          <span class="hex-row-bytes">${hexBytes}</span>
-          <span class="hex-row-ascii">${ascii}</span>
-        </div>
-      `;
-    }
-    viewport.innerHTML = html;
   }
 
   syncTerminalScrollbar() {
@@ -1410,7 +827,9 @@ class SC131App {
       const ab = await file.arrayBuffer();
       const raw = new Uint8Array(ab);
       const img = await decompressIfGzip(raw);
-      this.board.sdCard.attachImage(img);
+      if (this.board.sdcard) {
+        this.board.sdcard.attachImage(img);
+      }
       const stat = document.getElementById('sd-status-text');
       if (stat) stat.textContent = `SD0: ${file.name} (${(img.byteLength / (1024 * 1024)).toFixed(1)} MB)`;
       const sbSd = document.getElementById('sb-sd');
@@ -1422,12 +841,11 @@ class SC131App {
   }
 
   exportSdImage() {
-    const img = this.board.sdCard.image;
-    if (!img) {
+    if (!this.board.sdcard || !this.board.sdcard.image) {
       alert('No SD card image is currently mounted.');
       return;
     }
-    const blob = new Blob([img], { type: 'application/octet-stream' });
+    const blob = new Blob([this.board.sdcard.image], { type: 'application/octet-stream' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -1446,10 +864,9 @@ class SC131App {
         alert('ROM file exceeds 512 KB Flash ROM capacity.');
         return;
       }
-      this.board.flashRom.fill(0xFF);
-      this.board.flashRom.set(bytes);
+      this.board.loadRom(bytes);
       this.resetHardwareTactile();
-      alert(`Loaded custom ROM "${file.name}" (${bytes.byteLength} bytes) into Flash ROM U1.`);
+      alert(`Loaded custom ROM "${file.name}" (${bytes.byteLength} bytes) into Flash ROM.`);
       e.target.value = '';
     } catch (err) {
       alert(`Error loading ROM file: ${err.message}`);
@@ -1458,8 +875,8 @@ class SC131App {
 
   stepInstruction() {
     if (this.running) this.pause();
-    this.board.stepCycles(1);
-    this.updateDebuggerViews();
+    this.board.cpu.step();
+    this.totalExecutedCycles++;
   }
 
   pause() {
@@ -1470,10 +887,13 @@ class SC131App {
       btn.classList.remove('btn-primary');
       btn.classList.add('btn-success');
     }
+    const pill = document.getElementById('status-pill');
+    if (pill) {
+      pill.textContent = 'PAUSED';
+      pill.className = 'pill pill-paused';
+    }
     const sbCpu = document.getElementById('sb-cpu-state');
     if (sbCpu) sbCpu.textContent = '⏸ Paused';
-
-    this.updateDebuggerViews();
   }
 
   resume() {
@@ -1484,6 +904,11 @@ class SC131App {
       btn.textContent = 'Pause';
       btn.classList.remove('btn-success');
       btn.classList.add('btn-primary');
+    }
+    const pill = document.getElementById('status-pill');
+    if (pill) {
+      pill.textContent = `RUNNING @ ${(18.432 * this.speedMultiplier).toFixed(2)} MHz`;
+      pill.className = 'pill pill-running';
     }
     const sbCpu = document.getElementById('sb-cpu-state');
     if (sbCpu) sbCpu.textContent = `● ${(18.432 * this.speedMultiplier).toFixed(2)} MHz`;
@@ -1500,58 +925,50 @@ class SC131App {
     const targetFreq = 18432000 * this.speedMultiplier;
     const cyclesToRun = Math.floor((targetFreq * deltaMs) / 1000) + this.cycleDebt;
 
-    const chunkSize = 20000;
+    const chunkSize = 25000;
     let cyclesDone = 0;
-    let hitBreakpoint = false;
 
-    while (cyclesDone < cyclesToRun && !hitBreakpoint) {
+    while (cyclesDone < cyclesToRun) {
       const slice = Math.min(chunkSize, cyclesToRun - cyclesDone);
-      const executed = this.board.stepCycles(slice);
-      cyclesDone += executed;
+      const res = this.board.runCycles(slice);
+      cyclesDone += res.cyclesExecuted;
+      this.totalExecutedCycles += res.cyclesExecuted;
 
-      // Breakpoint check
-      if (this.breakpoints.size > 0 && this.breakpoints.has(this.board.cpu.pc)) {
-        hitBreakpoint = true;
+      if (res.breakpointHit) {
         this.pause();
-        this.disasmAt(this.board.cpu.pc);
         break;
       }
-
-      if (executed === 0) break;
+      if (res.cyclesExecuted === 0) break;
     }
 
     this.cycleDebt = cyclesToRun - cyclesDone;
 
-    // Performance telemetry
+    // Performance telemetry update (~2 times per second)
     this.fpsCounter++;
     if (timestamp - this.fpsLastTime >= 500) {
       const elapsedSec = (timestamp - this.fpsLastTime) / 1000;
-      const cyclesDelta = this.board.totalCycles - this.lastCycles;
+      const cyclesDelta = this.totalExecutedCycles - this.lastCycles;
       this.measuredMhz = (cyclesDelta / elapsedSec) / 1000000;
-      this.lastCycles = this.board.totalCycles;
+      this.lastCycles = this.totalExecutedCycles;
       this.fpsLastTime = timestamp;
       this.fpsCounter = 0;
 
       const perfEl = document.getElementById('perf-counter');
       if (perfEl) {
-        perfEl.textContent = `${this.measuredMhz.toFixed(2)} MHz • ${this.board.totalCycles.toLocaleString()} cycles`;
+        perfEl.textContent = `${this.measuredMhz.toFixed(2)} MHz • ${this.totalExecutedCycles.toLocaleString()} cycles`;
       }
 
       const sbCycles = document.getElementById('sb-cycles');
       if (sbCycles) {
-        sbCycles.textContent = `${this.board.totalCycles.toLocaleString()} cycles`;
+        sbCycles.textContent = `${this.totalExecutedCycles.toLocaleString()} cycles`;
       }
 
       const sbPc = document.getElementById('sb-pc');
-      if (sbPc) {
+      if (sbPc && this.board.cpu) {
         sbPc.textContent = `PC: $${hex4(this.board.cpu.pc)}`;
       }
 
       this.updateSc126RtcUI();
-
-      if (this.debuggerLive) {
-        this.updateDebuggerViews();
-      }
     }
 
     if (this.running) {

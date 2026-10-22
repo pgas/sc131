@@ -111,6 +111,14 @@ export class SerialTerminal {
     this.resizeCanvas();
   }
 
+  setSize(preset) {
+    this.setSizePreset(preset);
+  }
+
+  write(byte) {
+    this.writeByte(byte);
+  }
+
   makeEmptyCell() {
     return {
       ch: ' ',
